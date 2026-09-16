@@ -11,7 +11,8 @@ CREATE TABLE users (
 CREATE TABLE skin_tone_anchor (
     id              SERIAL PRIMARY KEY,
     name            VARCHAR NOT NULL,
-    reference_color VARCHAR(7) NOT NULL
+    reference_color VARCHAR(7) NOT NULL,
+    sort_order      SMALLINT NOT NULL DEFAULT 0
 );
 
 -- 3. seller — depends on users (one-to-one)

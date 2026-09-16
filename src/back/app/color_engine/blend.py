@@ -15,16 +15,16 @@ from app.color_engine.colorspace import (
     hex_to_rgb255,
 )
 
-# ضریب پوشش تقریبی به ازای نوع Finish — این هم یه فرض اولیه‌ست که با تست واقعی
-# (نظر بصری seller روی پیش‌نمایش) قابل تنظیم دقیق‌تره.
-OPACITY_BY_FINISH = {
-    "matte": 0.88,
-    "glossy": 0.68,
-}
+# ضریب پوشش پایه — یکسان برای هر دو Finish، چون تفاوت واقعی matte/glossy
+# specular highlight هست نه opacity (طبق بررسی عکس‌های واقعی، مستندشده در
+# SPECULAR_HIGHLIGHT_SPEC.md). خودِ هایلایت توی موتور رندر فاز ۷ اضافه می‌شه،
+# نه اینجا — چون render_color باید یه رنگ پایه‌ی ثابت باشه، نه چیزی که به
+# زاویه‌ی نور/سر لحظه‌ای وابسته‌ست.
+BASE_OPACITY = 0.85
 
 
-def render_color_for_anchor(base_pigment_hex, anchor_reference_hex, finish):
-    opacity = OPACITY_BY_FINISH.get(finish, 0.8)
+def render_color_for_anchor(base_pigment_hex, anchor_reference_hex, finish=None):
+    opacity = BASE_OPACITY
 
     pigment_linear = rgb255_to_linear(hex_to_rgb255(base_pigment_hex))
     anchor_linear = rgb255_to_linear(hex_to_rgb255(anchor_reference_hex))
@@ -42,7 +42,7 @@ def compute_all_render_profiles(base_pigment_hex, finish, anchors):
     return [
         {
             "skin_tone_anchor_id": anchor["id"],
-            "rendered_color": render_color_for_anchor(
+            "render_color": render_color_for_anchor(
                 base_pigment_hex, anchor["reference_color"], finish
             ),
         }

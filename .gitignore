@@ -1,5 +1,7 @@
 venv/
 __pycache__/
-tests/
 *.pyc
 .env
+*.db
+synthetic_samples/
+tests/
