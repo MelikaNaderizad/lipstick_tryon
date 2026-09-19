@@ -4,4 +4,3 @@ __pycache__/
 .env
 *.db
 synthetic_samples/
-tests/

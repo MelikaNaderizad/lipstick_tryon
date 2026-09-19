@@ -23,7 +23,14 @@ from app.color_engine.colorspace import (
 BASE_OPACITY = 0.85
 
 
-def render_color_for_anchor(base_pigment_hex, anchor_reference_hex, finish=None):
+# ضریب پوشش پایه — قبلاً بر اساس matte/glossy فرق می‌کرد، ولی طبق بررسی
+# عکس‌های واقعی (مستندشده در SPECULAR_HIGHLIGHT_SPEC.md) اون تفاوت واقعی
+# specular highlight بود نه opacity؛ الان هم که finish از مدل حذف شده
+# (به‌جاش «نوع محصول» در سطح Product داریم)، یه مقدار ثابت برای همه.
+BASE_OPACITY = 0.85
+
+
+def render_color_for_anchor(base_pigment_hex, anchor_reference_hex):
     opacity = BASE_OPACITY
 
     pigment_linear = rgb255_to_linear(hex_to_rgb255(base_pigment_hex))
@@ -34,7 +41,7 @@ def render_color_for_anchor(base_pigment_hex, anchor_reference_hex, finish=None)
     return rgb255_to_hex(blended_rgb255)
 
 
-def compute_all_render_profiles(base_pigment_hex, finish, anchors):
+def compute_all_render_profiles(base_pigment_hex, anchors):
     """
     anchors: لیستی از dict شامل {"id": ..., "reference_color": "#RRGGBB"}
     خروجی: لیستی از dict آماده برای درج در shade_render_profile
@@ -43,7 +50,7 @@ def compute_all_render_profiles(base_pigment_hex, finish, anchors):
         {
             "skin_tone_anchor_id": anchor["id"],
             "render_color": render_color_for_anchor(
-                base_pigment_hex, anchor["reference_color"], finish
+                base_pigment_hex, anchor["reference_color"]
             ),
         }
         for anchor in anchors

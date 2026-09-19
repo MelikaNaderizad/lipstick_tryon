@@ -2,9 +2,15 @@
 """
 اسکریپت Seed — برای پر کردن دیتابیس با داده‌ی اولیه‌ی لازم برای دموی لایو:
     ۱. ۶ تا skin_tone_anchor نهایی پروژه
-    ۲. یه seller/brand/product نمونه
-    ۳. چند تا shade نمونه با base_pigment_color واقعی + shade_render_profile
-       محاسبه‌شده برای هر Anchor (دقیقاً با همون منطق color_engine که قبلاً تست شد)
+    ۲. یه seller/brand نمونه
+    ۳. چند تا Product زیر همون Brand — هرکدوم یه «نوع» متفاوت (مایع/جامد/...)
+    ۴. برای هر Product، چند Shade (رنگ) با base_pigment_color واقعی +
+       shade_render_profile محاسبه‌شده برای هر Anchor
+    ۵. آپلود عکس واقعی هر Shade از پوشه‌ی sample_swatches/ (اگه گذاشته باشی)
+
+ساختار داده دقیقاً مطابق دنیای واقعیه: یه Brand چند Product (نوع) داره،
+هر Product چند Shade (رنگ) داره. «نوع» سطح Product‌ه، نه Shade — قبلاً
+finish (matte/glossy) روی Shade بود که حذف شده.
 
 Idempotent: اجرای دوباره‌ش داده‌ی تکراری نمی‌سازه (بر اساس name/email چک می‌کنه).
 
@@ -29,6 +35,7 @@ from app.models.product import Product
 from app.models.shade import Shade
 from app.models.skin_tone_anchor import SkinToneAnchor
 from app.models.shade_render_profile import ShadeRenderProfile
+from app.storage.minio_client import upload_file, object_exists
 
 # ---------- داده‌ی ثابت: ۶ Anchor نهایی پروژه ----------
 SKIN_TONE_ANCHORS = [
@@ -40,7 +47,6 @@ SKIN_TONE_ANCHORS = [
     {"name": "گندمی‌تیره-زیتونی", "reference_color": "#9C8A5C", "sort_order": 6},
 ]
 
-# ---------- داده‌ی نمونه: یه brand + چند shade واقع‌بینانه ----------
 DEMO_SELLER = {
     "email": "demo-seller@example.com",
     "password": "demo-password-123",
@@ -51,24 +57,39 @@ DEMO_SELLER = {
 
 DEMO_BRAND = {"name": "کالکشن دمو", "description": "برند نمونه برای دموی لایو"}
 
-DEMO_PRODUCT = {
-    "name": "رژ لب مدادی دمو",
-    "category": "lipstick",
-    "description": "محصول نمونه برای نمایش قابلیت Try-On",
-    "image_path": "products/demo-product.jpg",  # مسیر نمونه در MinIO (ماژول بعدی)
-}
+# عکس‌های واقعی سواچ رو خودت اینجا می‌ذاری — اسکریپت هیچی خودش نمی‌سازه.
+# اسم فایل باید دقیقاً همون بخش آخر swatch_image_path باشه.
+SAMPLE_SWATCH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_swatches")
 
-# رنگ‌های base_pigment_color دستی (چون هنوز عکس واقعی Swatch آپلود نشده،
-# این‌ها مستقیم به‌عنوان رنگ پایه در نظر گرفته می‌شن، نه از extraction.py)
-DEMO_SHADES = [
-    {"name": "رز کلاسیک",  "finish": "matte",  "base_pigment_color": "#B0223A",
-     "swatch_image_path": "swatches/demo-rose-classic.jpg"},
-    {"name": "مرجانی",     "finish": "glossy", "base_pigment_color": "#E0645A",
-     "swatch_image_path": "swatches/demo-coral.jpg"},
-    {"name": "نودی گرم",   "finish": "matte",  "base_pigment_color": "#B97A62",
-     "swatch_image_path": "swatches/demo-warm-nude.jpg"},
-    {"name": "بروندی",     "finish": "glossy", "base_pigment_color": "#7A2E3B",
-     "swatch_image_path": "swatches/demo-burgundy.jpg"},
+# ---------- داده‌ی نمونه: یه Brand با ۲ نوع محصول مختلف ----------
+# category باید یکی از این‌ها باشه: liquid, stick, gloss, balm, oil, plumper
+# رنگ‌های base_pigment_color دستی وارد شدن (نه از extraction.py) — طبق تصمیم
+# فعلی، مرحله‌ی استخراج خودکار رنگ از عکس فعلاً کنار گذاشته شده.
+DEMO_PRODUCTS = [
+    {
+        "category": "liquid",
+        "name": "رژ لب مایع دمو",
+        "description": "محصول نمونه از نوع مایع",
+        "image_path": "products/demo-liquid.jpg",
+        "shades": [
+            {"name": "رز کلاسیک", "base_pigment_color": "#B0223A",
+             "swatch_image_path": "swatches/demo-rose-classic.jpg"},
+            {"name": "مرجانی", "base_pigment_color": "#E0645A",
+             "swatch_image_path": "swatches/demo-coral.jpg"},
+        ],
+    },
+    {
+        "category": "stick",
+        "name": "رژ لب جامد دمو",
+        "description": "محصول نمونه از نوع جامد",
+        "image_path": "products/demo-stick.jpg",
+        "shades": [
+            {"name": "نودی گرم", "base_pigment_color": "#B97A62",
+             "swatch_image_path": "swatches/demo-warm-nude.jpg"},
+            {"name": "بروندی", "base_pigment_color": "#7A2E3B",
+             "swatch_image_path": "swatches/demo-burgundy.jpg"},
+        ],
+    },
 ]
 
 
@@ -114,7 +135,7 @@ def seed_demo_seller(db):
     return seller
 
 
-def seed_demo_brand_product(db, seller):
+def seed_demo_brand(db, seller):
     brand = db.query(Brand).filter(Brand.seller_id == seller.id, Brand.name == DEMO_BRAND["name"]).first()
     if brand is None:
         brand = Brand(seller_id=seller.id, **DEMO_BRAND)
@@ -124,43 +145,92 @@ def seed_demo_brand_product(db, seller):
         print(f"  برند نمونه ساخته شد (id={brand.id})")
     else:
         print(f"  برند نمونه از قبل بود (id={brand.id})")
-
-    product = db.query(Product).filter(Product.brand_id == brand.id, Product.name == DEMO_PRODUCT["name"]).first()
-    if product is None:
-        product = Product(brand_id=brand.id, **DEMO_PRODUCT)
-        db.add(product)
-        db.commit()
-        db.refresh(product)
-        print(f"  محصول نمونه ساخته شد (id={product.id})")
-    else:
-        print(f"  محصول نمونه از قبل بود (id={product.id})")
-    return product
+    return brand
 
 
-def seed_demo_shades(db, product, anchors):
+def seed_demo_products_and_shades(db, brand, anchors):
     anchors_payload = [{"id": a.id, "reference_color": a.reference_color} for a in anchors]
+    all_shades = []
 
-    for shade_data in DEMO_SHADES:
-        existing = db.query(Shade).filter(
-            Shade.product_id == product.id, Shade.name == shade_data["name"]
+    for product_data in DEMO_PRODUCTS:
+        shades_data = product_data["shades"]
+        product_fields = {k: v for k, v in product_data.items() if k != "shades"}
+
+        product = db.query(Product).filter(
+            Product.brand_id == brand.id, Product.name == product_fields["name"]
         ).first()
-        if existing:
-            print(f"  Shade «{shade_data['name']}» از قبل بود (id={existing.id}) — رد شد")
+        if product is None:
+            product = Product(brand_id=brand.id, **product_fields)
+            db.add(product)
+            db.commit()
+            db.refresh(product)
+            print(f"  Product «{product_fields['name']}» (نوع: {product_fields['category']}) ساخته شد (id={product.id})")
+        else:
+            print(f"  Product «{product_fields['name']}» از قبل بود (id={product.id})")
+
+        for shade_data in shades_data:
+            existing = db.query(Shade).filter(
+                Shade.product_id == product.id, Shade.name == shade_data["name"]
+            ).first()
+            if existing:
+                print(f"    Shade «{shade_data['name']}» از قبل بود (id={existing.id}) — رد شد")
+                all_shades.append(existing)
+                continue
+
+            shade = Shade(product_id=product.id, **shade_data)
+            db.add(shade)
+            db.commit()
+            db.refresh(shade)
+
+            profiles = compute_all_render_profiles(shade.base_pigment_color, anchors_payload)
+            for p in profiles:
+                db.add(ShadeRenderProfile(shade_id=shade.id, **p))
+            db.commit()
+
+            print(f"    Shade «{shade_data['name']}» ساخته شد (id={shade.id}) + {len(profiles)} render_profile")
+            all_shades.append(shade)
+
+    return all_shades
+
+
+def seed_shade_images(db, shades):
+    """
+    عکس Swatch رو خودمون نمی‌سازیم — فقط اگه خودت عکس واقعی رو با اسم درست
+    توی پوشه‌ی scripts/sample_swatches/ گذاشته باشی، آپلودش می‌کنیم.
+    اگه فایل نباشه، فقط هشدار می‌ده و رد می‌شه (کل Seed رو متوقف نمی‌کنه).
+    """
+    uploaded, skipped, missing, failed = 0, 0, 0, 0
+    for shade in shades:
+        if not shade.swatch_image_path:
             continue
 
-        shade = Shade(product_id=product.id, **shade_data)
-        db.add(shade)
-        db.commit()
-        db.refresh(shade)
+        local_filename = os.path.basename(shade.swatch_image_path)
+        local_path = os.path.join(SAMPLE_SWATCH_DIR, local_filename)
 
-        profiles = compute_all_render_profiles(
-            shade.base_pigment_color, shade.finish, anchors_payload
-        )
-        for p in profiles:
-            db.add(ShadeRenderProfile(shade_id=shade.id, **p))
-        db.commit()
+        try:
+            if object_exists(shade.swatch_image_path):
+                skipped += 1
+                continue
+        except Exception as exc:
+            failed += 1
+            print(f"    ⚠️  چک کردن «{shade.name}» توی MinIO ناموفق بود ({exc})")
+            continue
 
-        print(f"  Shade «{shade_data['name']}» ساخته شد (id={shade.id}) + {len(profiles)} render_profile")
+        if not os.path.isfile(local_path):
+            missing += 1
+            print(f"    ⏭  عکس «{shade.name}» پیدا نشد — این فایل رو بذار: {local_path}")
+            continue
+
+        try:
+            upload_file(local_path, shade.swatch_image_path)
+            uploaded += 1
+            print(f"    ✓ عکس «{shade.name}» آپلود شد ({local_filename})")
+        except Exception as exc:
+            failed += 1
+            print(f"    ⚠️  آپلود عکس «{shade.name}» ناموفق بود ({exc}) — MinIO رو چک کن")
+
+    print(f"  عکس‌ها: {uploaded} تا آپلود شد، {skipped} تا از قبل بود، "
+          f"{missing} تا فایلش پیدا نشد، {failed} تا خطا داد")
 
 
 def main():
@@ -173,11 +243,14 @@ def main():
         print("۲. Seller نمونه...")
         seller = seed_demo_seller(db)
 
-        print("۳. Brand و Product نمونه...")
-        product = seed_demo_brand_product(db, seller)
+        print("۳. Brand نمونه...")
+        brand = seed_demo_brand(db, seller)
 
-        print("۴. Shadeهای نمونه + render_profile...")
-        seed_demo_shades(db, product, anchors)
+        print("۴. Productها (انواع) و Shadeها (رنگ‌ها)...")
+        shades = seed_demo_products_and_shades(db, brand, anchors)
+
+        print("۵. عکس‌های Swatch (آپلود در MinIO)...")
+        seed_shade_images(db, shades)
 
         print("\nتموم شد.")
     finally:

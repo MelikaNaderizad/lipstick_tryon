@@ -199,6 +199,40 @@ function hexToRgb(hex) {
   return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
 }
 
+// ---------- تبدیل CIE Lab <-> sRGB (D65) ----------
+// دقیقاً همون فضای رنگی که color_lab.py از OpenCV بازیابی می‌کنه (نه RGB خام).
+const _XN = 0.95047, _YN = 1.0, _ZN = 1.08883;
+function _fLab(t) {
+  const d = 6 / 29;
+  return t > d * d * d ? Math.cbrt(t) : t / (3 * d * d) + 4 / 29;
+}
+function _fLabInv(t) {
+  const d = 6 / 29;
+  return t > d ? t * t * t : 3 * d * d * (t - 4 / 29);
+}
+function rgbToLab(r, g, b) {
+  const rl = srgbToLinear(r), gl = srgbToLinear(g), bl = srgbToLinear(b);
+  const x = 0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl;
+  const y = 0.2126729 * rl + 0.7151522 * gl + 0.0721750 * bl;
+  const z = 0.0193339 * rl + 0.1191920 * gl + 0.9503041 * bl;
+  const fx = _fLab(x / _XN), fy = _fLab(y / _YN), fz = _fLab(z / _ZN);
+  return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+function labToRgb(l, a, b) {
+  const fy = (l + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  const x = _fLabInv(fx) * _XN, y = _fLabInv(fy) * _YN, z = _fLabInv(fz) * _ZN;
+  const rl =  3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+  const gl = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+  const bl =  0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+  return { r: linearToSrgb(rl), g: linearToSrgb(gl), b: linearToSrgb(bl) };
+}
+function hexToLab(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToLab(r, g, b);
+}
+
 async function loadData() {
   const base = apiBaseInput.value.replace(/\/$/, "");
   statusEl.textContent = "در حال گرفتن داده از بک‌اند...";
@@ -335,40 +369,40 @@ function renderLoop() {
     const frame = ctx.getImageData(0, 0, w, h);
     const data = frame.data;
 
-    let flatLinear = null;
+    // رنگ هدف: یا render_color پیش‌محاسبه‌شده روی Anchor انتخابی، یا خودِ
+    // base_pigment_color — در هر دو حالت یک‌بار در فریم به Lab تبدیل می‌شه.
+    let targetHex = selectedShade.base_pigment_color;
     if (selectedAnchor) {
-      // پیش‌محاسبه‌شده از دیتابیس (shade_render_profile) — نه blend لحظه‌ای
       const profile = selectedShade.render_profiles.find(
         (p) => p.skin_tone_anchor_id === selectedAnchor.id
       );
-      const flatHexColor = profile ? profile.render_color : selectedShade.base_pigment_color;
-      const { r, g, b } = hexToRgb(flatHexColor);
-      flatLinear = [srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)];
-    } else {
-      const { r: pr, g: pg, b: pb } = hexToRgb(selectedShade.base_pigment_color);
-      var pigmentLinear = [srgbToLinear(pr), srgbToLinear(pg), srgbToLinear(pb)];
+      if (profile) targetHex = profile.render_color;
     }
+    const targetLab = hexToLab(targetHex);
+
+    // دقیقاً همون دو ضریب color_lab.py: blend_ratio برای a/b (خودِ رنگ)،
+    // l_blend_ratio پایین برای L (تا های‌لایت/بافت طبیعی لب حفظ بشه و
+    // نتیجه "تخت" نشه).
+    const blendRatio = BASE_OPACITY; // 0.85
+    const lBlendRatio = 0.25;
 
     for (let i = 0; i < data.length; i += 4) {
       const maskAlpha = maskData[i + 3] / 255;
       if (maskAlpha <= 0.003) continue;
 
-      const rLin = srgbToLinear(data[i]);
-      const gLin = srgbToLinear(data[i + 1]);
-      const bLin = srgbToLinear(data[i + 2]);
+      const lab = rgbToLab(data[i], data[i + 1], data[i + 2]);
 
-      let outR, outG, outB;
-      if (flatLinear) {
-        outR = flatLinear[0]; outG = flatLinear[1]; outB = flatLinear[2];
-      } else {
-        outR = BASE_OPACITY * pigmentLinear[0] + (1 - BASE_OPACITY) * rLin;
-        outG = BASE_OPACITY * pigmentLinear[1] + (1 - BASE_OPACITY) * gLin;
-        outB = BASE_OPACITY * pigmentLinear[2] + (1 - BASE_OPACITY) * bLin;
-      }
+      const alpha = maskAlpha * blendRatio;
+      const newA = lab.a * (1 - alpha) + targetLab.a * alpha;
+      const newB = lab.b * (1 - alpha) + targetLab.b * alpha;
 
-      data[i]     = linearToSrgb(maskAlpha * outR + (1 - maskAlpha) * rLin);
-      data[i + 1] = linearToSrgb(maskAlpha * outG + (1 - maskAlpha) * gLin);
-      data[i + 2] = linearToSrgb(maskAlpha * outB + (1 - maskAlpha) * bLin);
+      const lAlpha = maskAlpha * blendRatio * lBlendRatio;
+      const newL = lab.l * (1 - lAlpha) + targetLab.l * lAlpha;
+
+      const out = labToRgb(newL, newA, newB);
+      data[i] = out.r;
+      data[i + 1] = out.g;
+      data[i + 2] = out.b;
     }
     ctx.putImageData(frame, 0, 0);
   }

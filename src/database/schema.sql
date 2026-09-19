@@ -34,22 +34,23 @@ CREATE TABLE brand (
 );
 
 -- 5. product — depends on brand (one-to-many)
+-- category = نوع محصول (مایع/جامد/لیپ‌گلاس/بالم/اویل/پلامپر) — نه فقط یه لیبل ثابت
 CREATE TABLE product (
     id          SERIAL PRIMARY KEY,
     brand_id    INTEGER NOT NULL REFERENCES brand(id),
     name        VARCHAR NOT NULL,
-    category    VARCHAR DEFAULT 'lipstick' NOT NULL,
+    category    VARCHAR NOT NULL CHECK (category IN ('liquid', 'stick', 'gloss', 'balm', 'oil', 'plumper')),
     description TEXT NOT NULL,
     image_path  VARCHAR NOT NULL,
     created_at  TIMESTAMP DEFAULT NOW()
 );
 
 -- 6. shade — depends on product (one-to-many)
+-- توجه: ستون finish (matte/glossy) حذف شد؛ «نوع» حالا سطح Product‌ه، نه Shade
 CREATE TABLE shade (
     id                  SERIAL PRIMARY KEY,
     product_id          INTEGER NOT NULL REFERENCES product(id),
     name                VARCHAR NOT NULL,
-    finish              VARCHAR NOT NULL CHECK (finish IN ('matte', 'glossy')),
     base_pigment_color  VARCHAR(7) NOT NULL,
     swatch_image_path   TEXT NOT NULL,
     created_at          TIMESTAMP DEFAULT NOW()

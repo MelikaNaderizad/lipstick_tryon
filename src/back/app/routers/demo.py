@@ -48,7 +48,9 @@ def list_demo_shades(db: Session = Depends(get_db)):
             {
                 "id": shade.id,
                 "name": shade.name,
-                "finish": shade.finish,
+                "product_id": shade.product_id,
+                "product_name": shade.product.name,
+                "product_type": shade.product.category,
                 "base_pigment_color": shade.base_pigment_color,
                 "swatch_image_url": swatch_url,
                 "render_profiles": [
