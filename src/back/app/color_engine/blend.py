@@ -22,14 +22,6 @@ from app.color_engine.colorspace import (
 # زاویه‌ی نور/سر لحظه‌ای وابسته‌ست.
 BASE_OPACITY = 0.85
 
-
-# ضریب پوشش پایه — قبلاً بر اساس matte/glossy فرق می‌کرد، ولی طبق بررسی
-# عکس‌های واقعی (مستندشده در SPECULAR_HIGHLIGHT_SPEC.md) اون تفاوت واقعی
-# specular highlight بود نه opacity؛ الان هم که finish از مدل حذف شده
-# (به‌جاش «نوع محصول» در سطح Product داریم)، یه مقدار ثابت برای همه.
-BASE_OPACITY = 0.85
-
-
 def render_color_for_anchor(base_pigment_hex, anchor_reference_hex):
     opacity = BASE_OPACITY
 
