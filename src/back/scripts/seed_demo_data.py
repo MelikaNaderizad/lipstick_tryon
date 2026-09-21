@@ -26,9 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base, engine, SessionLocal
 from app import models  # noqa: F401  (registers all models on Base.metadata)
-from app.core.security import hash_password
 from app.color_engine.blend import compute_all_render_profiles
-from app.models.user import User
 from app.models.seller import Seller
 from app.models.brand import Brand
 from app.models.product import Product
@@ -48,9 +46,7 @@ SKIN_TONE_ANCHORS = [
 ]
 
 DEMO_SELLER = {
-    "email": "demo-seller@example.com",
-    "password": "demo-password-123",
-    "full_name": "فروشنده‌ی نمونه",
+    "external_user_id": "demo-seller",
     "business_name": "برند نمونه",
     "phone_number": "09120000000",
 }
@@ -107,31 +103,17 @@ def seed_skin_tone_anchors(db):
 
 
 def seed_demo_seller(db):
-    user = db.query(User).filter(User.email == DEMO_SELLER["email"]).first()
-    if user is None:
-        user = User(
-            email=DEMO_SELLER["email"],
-            password_hash=hash_password(DEMO_SELLER["password"]),
-            full_name=DEMO_SELLER["full_name"],
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        print(f"  کاربر seller نمونه ساخته شد (id={user.id})")
-    else:
-        print(f"  کاربر seller نمونه از قبل بود (id={user.id})")
-
-    seller = db.query(Seller).filter(Seller.user_id == user.id).first()
+    seller = db.query(Seller).filter(
+        Seller.external_user_id == DEMO_SELLER["external_user_id"]
+    ).first()
     if seller is None:
-        seller = Seller(
-            user_id=user.id,
-            business_name=DEMO_SELLER["business_name"],
-            phone_number=DEMO_SELLER["phone_number"],
-        )
+        seller = Seller(**DEMO_SELLER)
         db.add(seller)
         db.commit()
         db.refresh(seller)
-        print(f"  ردیف seller ساخته شد (id={seller.id})")
+        print(f"  seller نمونه ساخته شد (id={seller.id})")
+    else:
+        print(f"  seller نمونه از قبل بود (id={seller.id})")
     return seller
 
 
@@ -234,7 +216,6 @@ def seed_shade_images(db, shades):
 
 
 def main():
-    Base.metadata.create_all(bind=engine)  # فقط اگه جدول‌ها هنوز نساخته شدن
     db = SessionLocal()
     try:
         print("۱. Anchorهای پوستی...")

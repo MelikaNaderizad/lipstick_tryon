@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -13,6 +13,9 @@ class Shade(Base):
     name = Column(String, nullable=False)
     base_pigment_color = Column(String(7), nullable=False)
     swatch_image_path = Column(Text, nullable=False)
+    pigment_alpha = Column(Float, nullable=True)
+    color_source = Column(String, nullable=False, server_default="manual")  # manual | extracted
+    extraction_meta = Column(JSON, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     product = relationship("Product", back_populates="shades")

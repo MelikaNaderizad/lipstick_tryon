@@ -1,47 +1,53 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+import os
+from dataclasses import dataclass
+
+from fastapi import Depends, Header, HTTPException, status
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from app.core.security import decode_access_token
 from app.database import get_db
 from app.models.seller import Seller
-from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+AUTH_MODE = os.getenv("AUTH_MODE", "dev")  # dev | jwt
+HOST_JWT_SECRET = os.getenv("HOST_JWT_SECRET", "")
+HOST_JWT_ALGORITHM = os.getenv("HOST_JWT_ALGORITHM", "HS256")
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> User:
-    credentials_error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="نشست معتبر نیست یا منقضی شده",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    user_id = decode_access_token(token)
-    if user_id is None:
-        raise credentials_error
+@dataclass
+class Identity:
+    external_user_id: str
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if user is None:
-        raise credentials_error
-    return user
+
+def get_identity(
+    authorization: str | None = Header(default=None),
+    x_external_user_id: str | None = Header(default=None),
+) -> Identity:
+    if AUTH_MODE == "dev":
+        # فقط برای توسعه؛ توی production نباید فعال باشه
+        if not x_external_user_id:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "هدر X-External-User-Id لازمه")
+        return Identity(external_user_id=x_external_user_id)
+
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "توکن لازمه")
+    try:
+        payload = jwt.decode(authorization[7:], HOST_JWT_SECRET, algorithms=[HOST_JWT_ALGORITHM])
+    except JWTError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "توکن معتبر نیست")
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "توکن فیلد sub نداره")
+    return Identity(external_user_id=str(sub))
 
 
 def get_current_seller(
-    current_user: User = Depends(get_current_user),
+    identity: Identity = Depends(get_identity),
     db: Session = Depends(get_db),
 ) -> Seller:
-    """
-    فقط کاربرهایی که یه ردیف متناظر توی جدول seller دارن اجازه‌ی عبور دارن.
-    یعنی مرز Supplier/Buyer دقیقاً همون چیزیه که قبلاً تصمیم گرفتیم:
-    نه یه فیلد role روی users، بلکه وجود/عدم‌وجود ردیف توی seller.
-    """
-    seller = db.query(Seller).filter(Seller.user_id == current_user.id).first()
+    seller = db.query(Seller).filter(Seller.external_user_id == identity.external_user_id).first()
     if seller is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="این مسیر فقط برای فروشنده‌هاست — اول باید ثبت‌نام seller رو کامل کنی",
+            status.HTTP_403_FORBIDDEN,
+            "این مسیر فقط برای فروشنده‌هاست — اول باید به‌عنوان فروشنده ثبت بشی",
         )
     return seller
