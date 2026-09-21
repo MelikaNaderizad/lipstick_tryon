@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>آپلود و تأیید رنگ سواچ</title>
+<style>
+  :root { --bg:#f6f4f5; --card:#fff; --ink:#222; --mut:#777; --line:#e3dfe1; --pink:#c2185b; --ok:#2e7d32; --bad:#c62828; }
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, sans-serif; background: var(--bg); color: var(--ink); margin: 0; padding: 20px; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 0 0 12px; }
+  .sub { color: var(--mut); font-size: 13px; margin-bottom: 18px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  label { font-size: 13px; color: var(--mut); }
+  input[type=text], select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font-family: inherit; font-size: 13px; }
+  button { padding: 7px 14px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px; }
+  button.primary { background: var(--pink); border-color: var(--pink); color: #fff; }
+  button.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+  button.bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { font-size: 12px; color: var(--mut); line-height: 1.8; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fff; }
+  canvas { max-width: 100%; border-radius: 6px; background: #ddd; display: block; touch-action: none; }
+  .modes label { color: var(--ink); margin-inline-end: 10px; }
+  .status { font-size: 12px; margin-top: 6px; min-height: 18px; }
+  .err { color: var(--bad); } .good { color: var(--ok); }
+  .chip { width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--line); flex: none; }
+  .hex { font-family: monospace; font-size: 15px; direction: ltr; display: inline-block; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; color: #fff; background: #999; }
+  .badge.approved { background: var(--ok); } .badge.rejected { background: var(--bad); }
+  .warn { font-size: 12px; color: #b26a00; line-height: 1.7; }
+  .meta { font-size: 11px; color: var(--mut); direction: ltr; text-align: left; word-break: break-all; }
+  .anchor-chip { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid var(--line); vertical-align:middle; margin-inline-end:4px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>آپلود و تأیید رنگ سواچ</h1>
+  <div class="sub" id="modeNote"></div>
+
+  <div class="panel" id="productPanel">
+    <h2>۱. محصول</h2>
+    <div class="row">
+      <label>برند</label>
+      <select id="brandSel"></select>
+      <input type="text" id="brandNew" placeholder="نام برند جدید" class="hidden">
+      <label>محصول</label>
+      <select id="productSel"></select>
+    </div>
+    <div class="row hidden" id="productNewRow">
+      <input type="text" id="productNew" placeholder="نام محصول جدید">
+      <label>نوع</label>
+      <select id="categorySel">
+        <option value="liquid">liquid — مایع</option>
+        <option value="stick">stick — جامد</option>
+        <option value="gloss">gloss — لیپ‌گلاس</option>
+        <option value="balm">balm — بالم</option>
+        <option value="oil">oil — اویل</option>
+        <option value="plumper">plumper — پلامپر</option>
+      </select>
+      <button id="createProductBtn" class="primary">ساخت محصول</button>
+    </div>
+    <div class="status" id="productStatus"></div>
+  </div>
+
+  <div class="panel" id="uploadPanel">
+    <h2>۲. آپلود عکس‌های سواچ</h2>
+    <div class="row">
+      <input type="file" id="files" accept="image/jpeg,image/png,image/webp" multiple>
+    </div>
+    <div class="hint">
+      روی هر عکس دو کادر هست: <b style="color:#1976d2">آبی = پوست خالی</b> و <b style="color:#2e7d32">سبز = رژ کشیده‌شده</b>.
+      کادر پیش‌فرض همون قالب راهنمای عکس‌گیریه؛ اگه عکس با اون قالب نگرفته شده، حالت کادر رو انتخاب کن و روی عکس بکش تا جابه‌جا بشه.
+      کادر سبز باید کاملاً داخل رنگ رژ باشه.
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label>تناژ پوست (اختیاری — دقت رو در نور بد خیلی بالا می‌بره)</label>
+      <select id="anchorSel"><option value="">— حدس خودکار —</option></select>
+      <label>تصحیح نور</label>
+      <select id="modeSel">
+        <option value="exposure">فقط روشنایی (پیش‌فرض)</option>
+        <option value="full">کامل (رنگ هم)</option>
+        <option value="none">بدون تصحیح</option>
+      </select>
+    </div>
+    <div class="grid" id="cards"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="uploadBtn" class="primary" disabled>آپلود و استخراج رنگ</button>
+      <span class="status" id="uploadStatus"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>۳. نتیجه‌ی استخراج <span id="approvedInfo" class="hint"></span></h2>
+    <div class="hint" style="margin-bottom:10px">
+      برای هر رنگ، بخش بریده‌شده‌ی عکس (چپ) کنار رنگ استخراج‌شده (راست) دیده می‌شه. اگه شبیه نیستن، رنگ رو اصلاح یا رد کن.
+    </div>
+    <div class="grid" id="results"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var PARAMS = new URLSearchParams(location.search);
+var CLIENT_VIEW = PARAMS.get("client") === "1";
+var HEADERS = { "X-External-User-Id": PARAMS.get("user") || "demo-seller" };
+var DEFAULT_SKIN = [0.10, 0.30, 0.45, 0.70];
+var DEFAULT_SWATCH = [0.55, 0.30, 0.90, 0.70];
+var WARN_TEXT = {
+  lighting_correction_clamped: "نور عکس خیلی نامتعادله؛ تصحیح نور به سقفش رسید",
+  swatch_not_uniform: "سواچ یکدست نیست (کادر سبز روی لبه یا پوست افتاده؟)",
+  swatch_patch_small: "کادر سبز خیلی کوچیکه",
+  swatch_overexposed: "سواچ بیش‌ازحد روشنه",
+  swatch_too_dark: "سواچ خیلی تاریکه"
+};
+var STATUS_TEXT = { pending: "در انتظار", approved: "تأیید شده", rejected: "رد شده" };
+
+var state = { overview: [], anchors: [], productId: null, cards: [] };
+
+function $(id) { return document.getElementById(id); }
+function el(tag, attrs, children) {
+  var n = document.createElement(tag);
+  Object.keys(attrs || {}).forEach(function (k) {
+    if (k === "text") n.textContent = attrs[k];
+    else if (k === "class") n.className = attrs[k];
+    else if (k.indexOf("on") === 0) n.addEventListener(k.slice(2), attrs[k]);
+    else n.setAttribute(k, attrs[k]);
+  });
+  (children || []).forEach(function (c) { if (c) n.appendChild(c); });
+  return n;
+}
+function setStatus(node, text, kind) { node.textContent = text || ""; node.className = "status " + (kind || ""); }
+
+async function api(path, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({}, HEADERS, opts.headers || {});
+  var r = await fetch(path, opts);
+  if (!r.ok) {
+    var t = await r.text();
+    try { var j = JSON.parse(t); t = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+    throw new Error(r.status + " — " + t);
+  }
+  return r.json();
+}
+function postJson(path, body, method) {
+  return api(path, { method: method || "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+/* ---------------------------------------------------------- محصول */
+async function loadOverview() {
+  state.overview = await api("/seller/overview");
+  var brandSel = $("brandSel"), prev = brandSel.value;
+  brandSel.innerHTML = "";
+  state.overview.forEach(function (b) { brandSel.appendChild(el("option", { value: String(b.id), text: b.name })); });
+  brandSel.appendChild(el("option", { value: "new", text: "+ برند جدید…" }));
+  if (prev && Array.prototype.some.call(brandSel.options, function (o) { return o.value === prev; })) brandSel.value = prev;
+  onBrandChange();
+}
+function onBrandChange() {
+  var v = $("brandSel").value, isNew = v === "new";
+  $("brandNew").classList.toggle("hidden", !isNew);
+  var ps = $("productSel"); ps.innerHTML = "";
+  var brand = state.overview.filter(function (b) { return String(b.id) === v; })[0];
+  if (brand) brand.products.forEach(function (p) {
+    ps.appendChild(el("option", { value: String(p.id), text: p.name + " (" + p.category + ") — " + p.shade_count + " رنگ" }));
+  });
+  ps.appendChild(el("option", { value: "new", text: "+ محصول جدید…" }));
+  var wantId = state.productId && Array.prototype.some.call(ps.options, function (o) { return o.value === String(state.productId); });
+  ps.value = wantId ? String(state.productId) : (ps.options.length > 1 ? ps.options[0].value : "new");
+  onProductChange();
+}
+function onProductChange() {
+  var v = $("productSel").value;
+  $("productNewRow").classList.toggle("hidden", v !== "new");
+  state.productId = v === "new" ? null : Number(v);
+  $("uploadBtn").disabled = !(state.productId && state.cards.length);
+  loadShades();
+}
+async function createProduct() {
+  var st = $("productStatus"); setStatus(st, "در حال ساخت…");
+  try {
+    var brandId = $("brandSel").value;
+    if (brandId === "new") {
+      var bn = $("brandNew").value.trim();
+      if (!bn) throw new Error("نام برند رو بنویس");
+      brandId = (await postJson("/seller/brands", { name: bn, description: "" })).id;
+    }
+    var pn = $("productNew").value.trim();
+    if (!pn) throw new Error("نام محصول رو بنویس");
+    var p = await postJson("/seller/brands/" + brandId + "/products", { name: pn, category: $("categorySel").value, description: "" });
+    state.productId = p.id;
+    $("brandSel").value = String(brandId);
+    await loadOverview();
+    $("brandSel").value = String(brandId); onBrandChange();
+    setStatus(st, "محصول ساخته شد.", "good");
+  } catch (e) { setStatus(st, e.message, "err"); }
+}
+
+/* ---------------------------------------------------------- کارت‌های آپلود */
+function drawBoxes(card) {
+  var c = card.canvas, ctx = c.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(card.img, 0, 0, c.width, c.height);
+  [["skin", "#1976d2"], ["swatch", "#2e7d32"]].forEach(function (pair) {
+    var b = card.boxes[pair[0]];
+    ctx.strokeStyle = pair[1]; ctx.lineWidth = 3;
+    ctx.strokeRect(b[0] * c.width, b[1] * c.height, (b[2] - b[0]) * c.width, (b[3] - b[1]) * c.height);
+  });
+}
+function addCard(file) {
+  var img = new Image();
+  var url = URL.createObjectURL(file);
+  var card = { file: file, img: img, boxes: { skin: DEFAULT_SKIN.slice(), swatch: DEFAULT_SWATCH.slice() }, mode: "skin" };
+  var canvas = el("canvas", {});
+  var nameInput = el("input", { type: "text", value: file.name.replace(/\.[^.]+$/, "") });
+  var status = el("div", { class: "status" });
+  var modeId = "m" + Math.random().toString(36).slice(2);
+  var modes = el("div", { class: "modes row" }, [
+    el("label", {}, [el("input", { type: "radio", name: modeId, value: "skin", checked: "checked", onchange: function () { card.mode = "skin"; } }), document.createTextNode(" کادر پوست")]),
+    el("label", {}, [el("input", { type: "radio", name: modeId, value: "swatch", onchange: function () { card.mode = "swatch"; } }), document.createTextNode(" کادر رژ")]),
+    el("button", { text: "حذف", onclick: function () {
+      state.cards = state.cards.filter(function (x) { return x !== card; });
+      root.remove(); $("uploadBtn").disabled = !(state.productId && state.cards.length);
+    } })
+  ]);
+  var root = el("div", { class: "item" }, [canvas, modes, el("div", { class: "row" }, [el("label", { text: "نام رنگ" }), nameInput]), status]);
+  card.canvas = canvas; card.nameInput = nameInput; card.status = status; card.root = root;
+
+  img.onload = function () {
+    var w = Math.min(img.naturalWidth, 640);
+    canvas.width = w; canvas.height = Math.round(w * img.naturalHeight / img.naturalWidth);
+    drawBoxes(card);
+  };
+  img.src = url;
+
+  var start = null;
+  function pos(ev) {
+    var r = canvas.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height))];
+  }
+  canvas.addEventListener("pointerdown", function (ev) { start = pos(ev); canvas.setPointerCapture(ev.pointerId); });
+  canvas.addEventListener("pointermove", function (ev) {
+    if (!start) return;
+    var p = pos(ev);
+    var x0 = Math.min(start[0], p[0]), x1 = Math.max(start[0], p[0]), y0 = Math.min(start[1], p[1]), y1 = Math.max(start[1], p[1]);
+    if (x1 - x0 > 0.005 && y1 - y0 > 0.005) { card.boxes[card.mode] = [x0, y0, x1, y1]; drawBoxes(card); }
+  });
+  function end() { start = null; }
+  canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+
+  state.cards.push(card);
+  $("cards").appendChild(root);
+}
+function fmtBox(b) { return b.map(function (v) { return v.toFixed(4); }).join(","); }
+
+async function uploadAll() {
+  var btn = $("uploadBtn"), st = $("uploadStatus");
+  btn.disabled = true; var ok = 0, fail = 0;
+  for (var i = 0; i < state.cards.length; i++) {
+    var card = state.cards[i];
+    setStatus(st, "در حال آپلود " + (i + 1) + " از " + state.cards.length + "…");
+    setStatus(card.status, "در حال پردازش…");
+    var fd = new FormData();
+    fd.append("name", card.nameInput.value.trim() || card.file.name);
+    fd.append("swatch", card.file, card.file.name);
+    fd.append("skin_box", fmtBox(card.boxes.skin));
+    fd.append("swatch_box", fmtBox(card.boxes.swatch));
+    fd.append("correction_mode", $("modeSel").value);
+    if ($("anchorSel").value) fd.append("skin_tone_anchor_id", $("anchorSel").value);
+    try {
+      var s = await api("/seller/products/" + state.productId + "/shades", { method: "POST", body: fd });
+      setStatus(card.status, "✓ " + s.base_pigment_color, "good"); ok++;
+    } catch (e) { setStatus(card.status, e.message, "err"); fail++; }
+  }
+  setStatus(st, ok + " رنگ ساخته شد" + (fail ? "، " + fail + " تا خطا داد" : "") + ".", fail ? "err" : "good");
+  state.cards = state.cards.filter(function (c) { return c.status.className.indexOf("good") < 0; });
+  Array.prototype.slice.call($("cards").children).forEach(function (n) {
+    if (!state.cards.some(function (c) { return c.root === n; })) n.remove();
+  });
+  btn.disabled = !(state.productId && state.cards.length);
+  await loadOverview(); // شمارنده‌ها
+}
+
+/* ---------------------------------------------------------- نتایج */
+async function loadShades() {
+  var box = $("results"); box.innerHTML = "";
+  if (!state.productId) { $("approvedInfo").textContent = ""; return; }
+  var shades = await api("/seller/products/" + state.productId + "/shades");
+  var approved = shades.filter(function (s) { return s.status === "approved"; }).length;
+  $("approvedInfo").textContent = shades.length ? "(" + approved + " از " + shades.length + " تأیید شده)" : "(هنوز رنگی نیست)";
+  shades.forEach(function (s) { box.appendChild(shadeCard(s)); });
+}
+function drawCompare(canvas, s) {
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  var W = canvas.width, H = canvas.height;
+  ctx.fillStyle = s.base_pigment_color; ctx.fillRect(W / 2, 0, W / 2, H);
+  ctx.fillStyle = "#eee"; ctx.fillRect(0, 0, W / 2, H);
+  var b = s.extraction_meta && s.extraction_meta.boxes_fraction && s.extraction_meta.boxes_fraction.swatch;
+  if (!s.swatch_image_url || !b) return;
+  var img = new Image();
+  img.onload = function () {
+    var sx = b[0] * img.naturalWidth, sy = b[1] * img.naturalHeight, sw = (b[2] - b[0]) * img.naturalWidth, sh = (b[3] - b[1]) * img.naturalHeight;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W / 2, H);
+  };
+  img.src = s.swatch_image_url;
+}
+function shadeCard(s) {
+  var meta = s.extraction_meta || {};
+  var canvas = el("canvas", { width: "240", height: "100" });
+  drawCompare(canvas, s);
+  var warns = (meta.warnings || []).map(function (w) { return el("div", { class: "warn", text: "⚠ " + (WARN_TEXT[w] || w) }); });
+  var badge = el("span", { class: "badge " + s.status, text: STATUS_TEXT[s.status] || s.status });
+  var colorInput = el("input", { type: "color", value: s.base_pigment_color.toLowerCase() });
+
+  function act(fn) { return async function () { try { await fn(); await loadShades(); await loadOverview(); } catch (e) { alert(e.message); } }; }
+  var buttons = [
+    el("button", { class: "ok", text: "تأیید", onclick: act(function () { return postJson("/seller/shades/" + s.id + "/status", { status: "approved" }); }) }),
+    el("button", { class: "bad", text: "رد", onclick: act(function () { return postJson("/seller/shades/" + s.id + "/status", { status: "rejected" }); }) })
+  ];
+  var editRow = CLIENT_VIEW ? null : el("div", { class: "row" }, [
+    colorInput,
+    el("button", { text: "ذخیره‌ی رنگ اصلاح‌شده", onclick: act(function () { return postJson("/seller/shades/" + s.id + "/color", { color: colorInput.value }, "PATCH"); }) })
+  ]);
+
+  var info = [
+    el("div", { class: "row" }, [el("b", { text: s.name }), badge]),
+    el("div", {}, [el("span", { class: "hex", text: s.base_pigment_color }), el("span", { class: "hint", text: "  " + (s.color_source === "manual" ? "(رنگ دستی)" : "(استخراج‌شده)") })]),
+    canvas,
+    el("div", { class: "hint", text: "چپ: بخش بریده‌شده‌ی عکس — راست: رنگ استخراج‌شده" })
+  ].concat(warns);
+  if (meta.correction_source) info.push(el("div", { class: "meta", text: "correction: " + meta.correction_source }));
+  info.push(el("div", { class: "row" }, buttons));
+  if (editRow) info.push(editRow);
+  return el("div", { class: "item" }, info);
+}
+
+/* ---------------------------------------------------------- شروع */
+async function init() {
+  if (CLIENT_VIEW) {
+    $("modeNote").textContent = "نمای کارفرما — رنگ‌ها رو با عکس مقایسه کن و تأیید یا رد کن.";
+    $("uploadPanel").classList.add("hidden");
+  } else {
+    $("modeNote").textContent = "بعد از آپلود، برای دادن به کارفرما همین صفحه رو با ?client=1 باز کن.";
+  }
+  try {
+    try { await postJson("/seller/register", { business_name: "Demo Seller" }); } catch (e) { /* 409 = قبلاً ثبت شده */ }
+    state.anchors = await api("/demo/skin-tone-anchors");
+    state.anchors.forEach(function (a) {
+      $("anchorSel").appendChild(el("option", { value: String(a.id), text: a.name + " (" + a.reference_color + ")" }));
+    });
+    var pid = PARAMS.get("product");
+    if (pid) state.productId = Number(pid);
+    await loadOverview();
+  } catch (e) { setStatus($("productStatus"), "اتصال به بک‌اند برقرار نشد: " + e.message, "err"); }
+}
+$("brandSel").addEventListener("change", onBrandChange);
+$("productSel").addEventListener("change", onProductChange);
+$("createProductBtn").addEventListener("click", createProduct);
+$("uploadBtn").addEventListener("click", uploadAll);
+$("files").addEventListener("change", function (ev) {
+  Array.prototype.forEach.call(ev.target.files, addCard);
+  ev.target.value = "";
+  $("uploadBtn").disabled = !(state.productId && state.cards.length);
+});
+init();
+</script>
+</body>
+</html>

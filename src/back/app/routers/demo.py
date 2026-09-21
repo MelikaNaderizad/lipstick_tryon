@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.shade import Shade
 from app.models.shade_render_profile import ShadeRenderProfile
 from app.models.skin_tone_anchor import SkinToneAnchor
-from app.storage.minio_client import get_presigned_url, object_exists
+from app.storage.backend import get_url
 
 router = APIRouter(prefix="/demo", tags=["demo"])
 
@@ -34,15 +34,7 @@ def list_demo_shades(db: Session = Depends(get_db)):
             .filter(ShadeRenderProfile.shade_id == shade.id)
             .all()
         )
-        swatch_url = None
-        if shade.swatch_image_path:
-            try:
-                if object_exists(shade.swatch_image_path):
-                    swatch_url = get_presigned_url(shade.swatch_image_path)
-            except Exception:
-                # MinIO شاید هنوز بالا نیومده یا عکس واقعی آپلود نشده —
-                # دمو باید بدون عکس هم کار کنه، فقط با رنگ.
-                swatch_url = None
+        swatch_url = get_url(shade.swatch_image_path)  # None اگه فایل/ذخیره‌گاه نباشه — دمو بدون عکس هم کار می‌کنه
 
         result.append(
             {
@@ -52,6 +44,7 @@ def list_demo_shades(db: Session = Depends(get_db)):
                 "product_name": shade.product.name,
                 "product_type": shade.product.category,
                 "base_pigment_color": shade.base_pigment_color,
+                "status": shade.status,
                 "swatch_image_url": swatch_url,
                 "render_profiles": [
                     {

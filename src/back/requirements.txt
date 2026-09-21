@@ -5,9 +5,7 @@ psycopg2-binary
 python-dotenv
 numpy
 Pillow
-bcrypt
 python-jose[cryptography]
 python-multipart
-email-validator
 minio
 alembic

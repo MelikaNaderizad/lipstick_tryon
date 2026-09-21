@@ -33,7 +33,7 @@ from app.models.product import Product
 from app.models.shade import Shade
 from app.models.skin_tone_anchor import SkinToneAnchor
 from app.models.shade_render_profile import ShadeRenderProfile
-from app.storage.minio_client import upload_file, object_exists
+from app.storage.backend import upload_file, object_exists
 
 # ---------- داده‌ی ثابت: ۶ Anchor نهایی پروژه ----------
 SKIN_TONE_ANCHORS = [

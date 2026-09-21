@@ -5,3 +5,5 @@ __pycache__/
 .env
 *.db
 synthetic_samples/
+test_swatches/
+local_storage/
