@@ -4,11 +4,11 @@ import itertools
 import numpy as np
 import pytest
 
+from app.anchors import SKIN_TONE_ANCHORS
 from app.color_engine.colorspace import delta_e_76, hex_to_rgb255, rgb255_to_lab
 from app.color_engine.extraction import extract_base_pigment_color
 from app.color_engine.swatch_template import DEFAULT_SKIN_BOX, DEFAULT_SWATCH_BOX, to_pixels
 from scripts.make_test_swatches import GRAY_BOX, make_swatch_image
-from scripts.seed_demo_data import SKIN_TONE_ANCHORS
 
 ANCHORS = [a["reference_color"] for a in SKIN_TONE_ANCHORS]
 PIGMENTS = ["#B0223A", "#E0645A", "#B97A62", "#7A2E3B"]

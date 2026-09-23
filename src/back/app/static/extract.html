@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>استخراج رنگ سواچ و اپلای روی لب</title>
+<style>
+  :root { --bg:#f6f4f5; --card:#fff; --ink:#222; --mut:#777; --line:#e3dfe1; --pink:#c2185b; --ok:#2e7d32; --bad:#c62828; }
+  * { box-sizing: border-box; }
+  body { font-family: Tahoma, sans-serif; background: var(--bg); color: var(--ink); margin: 0; padding: 20px; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 0 0 12px; }
+  .sub { color: var(--mut); font-size: 13px; margin-bottom: 18px; line-height: 1.8; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  label { font-size: 13px; color: var(--mut); }
+  input[type=text], select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font-family: inherit; font-size: 13px; }
+  button { padding: 7px 14px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px; }
+  button.primary { background: var(--pink); border-color: var(--pink); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { font-size: 12px; color: var(--mut); line-height: 1.8; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 10px; }
+  .item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fff; }
+  canvas { max-width: 100%; border-radius: 6px; background: #ddd; display: block; touch-action: none; }
+  .status { font-size: 12px; margin-top: 6px; min-height: 18px; }
+  .err { color: var(--bad); } .good { color: var(--ok); }
+  .chip { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); flex: none; cursor: pointer; }
+  .chip.selected { outline: 2px solid var(--pink); outline-offset: 2px; }
+  .hex { font-family: monospace; font-size: 14px; direction: ltr; display: inline-block; }
+  .warn { font-size: 12px; color: #b26a00; line-height: 1.7; }
+  .modes label { color: var(--ink); margin-inline-end: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  td.ltr { direction: ltr; text-align: left; font-family: monospace; }
+  img.thumb { height: 40px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>استخراج رنگ سواچ و اپلای روی لب</h1>
+  <div class="sub">
+    روی هر عکس دو کادر بکش: <b style="color:#1976d2">آبی = پوست خالی</b> (مچ/دست، جایی که رژ نیست)
+    و <b style="color:#2e7d32">سبز = دقیقاً روی رنگ رژ</b>. کادر سبز باید کاملاً داخل رنگ رژ باشه؛
+    هرچی بیرون این دو کادره (آستین، پس‌زمینه، انگشت) روی نتیجه اثر نمی‌ذاره.
+  </div>
+
+  <div class="panel">
+    <h2>۱. استخراج رنگ از سواچ</h2>
+    <div class="row">
+      <label>تصحیح نور</label>
+      <select id="modeSel">
+        <option value="none" selected>بدون تصحیح (پیش‌فرض)</option>
+        <option value="exposure">فقط روشنایی</option>
+        <option value="full">کامل (رنگ هم)</option>
+      </select>
+      <label>تناژ پوست (اختیاری — فقط برای تصحیح نور)</label>
+      <select id="anchorSel"><option value="">— حدس خودکار —</option></select>
+    </div>
+    <div class="row"><input type="file" id="swatchFiles" accept="image/jpeg,image/png,image/webp" multiple></div>
+    <div class="grid" id="swatchCards"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="runBtn" class="primary" disabled>استخراج رنگ</button>
+      <span class="status" id="runStatus"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>۲. پیش‌نمایش روی لب (اختیاری — چهره لازم داره)</h2>
+    <div class="hint">یه رنگ از پایین انتخاب کن یا خودت بنویس، بعد عکس چهره‌ی رو‌به‌رو (بدون رژ) آپلود کن.</div>
+    <div class="row" id="colorPicker" style="margin-top:8px"></div>
+    <div class="row">
+      <label>یا رنگ دستی</label>
+      <input type="text" id="manualColor" placeholder="#B0223A" style="direction:ltr">
+      <input type="file" id="faceFile" accept="image/jpeg,image/png,image/webp">
+      <button id="applyBtn" class="primary" disabled>اپلای روی لب</button>
+    </div>
+    <div class="status" id="applyStatus"></div>
+    <div class="grid" id="applyResult"></div>
+  </div>
+
+  <div class="panel">
+    <h2>نتیجه‌های ذخیره‌شده</h2>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>عکس</th><th>نام</th><th>رنگ</th><th>مورد انتظار</th><th>ΔE</th><th>هشدار</th><th></th></tr></thead>
+      <tbody id="history"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var DEFAULT_SKIN = [0.05, 0.70, 0.30, 0.95];
+var DEFAULT_SWATCH = [0.55, 0.30, 0.95, 0.65];
+var COLORS = { skin: "#1976d2", swatch: "#2e7d32" };
+var WARN_TEXT = {
+  lighting_correction_clamped: "تصحیح نور به سقفش رسید (نور خیلی نامتعادله)",
+  swatch_not_uniform: "سواچ یکدست نیست (کادر سبز روی لبه یا پوست افتاده؟)",
+  swatch_patch_small: "کادر سبز خیلی کوچیکه",
+  swatch_overexposed: "سواچ بیش‌ازحد روشنه",
+  swatch_too_dark: "سواچ خیلی تاریکه"
+};
+var swatchCards = [];
+var savedColors = [];
+function $(id) { return document.getElementById(id); }
+function el(tag, attrs, children) {
+  var n = document.createElement(tag);
+  Object.keys(attrs || {}).forEach(function (k) {
+    if (k === "text") n.textContent = attrs[k];
+    else if (k === "class") n.className = attrs[k];
+    else if (k.indexOf("on") === 0) n.addEventListener(k.slice(2), attrs[k]);
+    else n.setAttribute(k, attrs[k]);
+  });
+  (children || []).forEach(function (c) { if (c) n.appendChild(c); });
+  return n;
+}
+function setStatus(node, text, kind) { node.textContent = text || ""; node.className = "status " + (kind || ""); }
+function fmtBox(b) { return b.map(function (v) { return v.toFixed(4); }).join(","); }
+
+async function api(path, opts) {
+  var r = await fetch(path, opts || {});
+  if (!r.ok) {
+    var t = await r.text();
+    try { var j = JSON.parse(t); t = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+    throw new Error(r.status + " — " + t);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+/* ---------------------------------------------------------- بخش ۱: استخراج */
+function drawBoxes(card) {
+  var c = card.canvas, ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(card.img, 0, 0, c.width, c.height);
+  ["skin", "swatch"].forEach(function (k) {
+    var b = card.boxes[k];
+    ctx.strokeStyle = COLORS[k]; ctx.lineWidth = 3;
+    ctx.strokeRect(b[0] * c.width, b[1] * c.height, (b[2] - b[0]) * c.width, (b[3] - b[1]) * c.height);
+  });
+}
+
+function addSwatchCard(file) {
+  var img = new Image();
+  var card = { file: file, img: img, mode: "swatch", boxes: { skin: DEFAULT_SKIN.slice(), swatch: DEFAULT_SWATCH.slice() } };
+  var canvas = el("canvas", {});
+  var nameInput = el("input", { type: "text", value: file.name.replace(/\.[^.]+$/, "") });
+  var expInput = el("input", { type: "text", placeholder: "رنگ درست (اختیاری)", style: "direction:ltr" });
+  var result = el("div", {});
+  var modeName = "m" + Math.random().toString(36).slice(2);
+  function radio(value, text, checked) {
+    var attrs = { type: "radio", name: modeName, value: value, onchange: function () { card.mode = value; } };
+    if (checked) attrs.checked = "checked";
+    return el("label", {}, [el("input", attrs), document.createTextNode(" " + text + "  ")]);
+  }
+  var root = el("div", { class: "item" }, [
+    canvas,
+    el("div", { class: "row" }, [radio("skin", "کادر پوست"), radio("swatch", "کادر رژ", true)]),
+    el("div", { class: "row" }, [el("label", { text: "نام" }), nameInput,
+      el("button", { text: "حذف", onclick: function () { swatchCards = swatchCards.filter(function (c) { return c !== card; }); root.remove(); refreshRun(); } })]),
+    el("div", { class: "row" }, [expInput]),
+    result
+  ]);
+  card.canvas = canvas; card.nameInput = nameInput; card.expInput = expInput; card.result = result;
+
+  img.onload = function () {
+    var w = Math.min(img.naturalWidth, 640);
+    canvas.width = w; canvas.height = Math.round(w * img.naturalHeight / img.naturalWidth);
+    drawBoxes(card);
+  };
+  img.src = URL.createObjectURL(file);
+
+  var start = null;
+  function pos(ev) {
+    var r = canvas.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height))];
+  }
+  canvas.addEventListener("pointerdown", function (ev) { start = pos(ev); canvas.setPointerCapture(ev.pointerId); });
+  canvas.addEventListener("pointermove", function (ev) {
+    if (!start) return;
+    var p = pos(ev);
+    var x0 = Math.min(start[0], p[0]), x1 = Math.max(start[0], p[0]), y0 = Math.min(start[1], p[1]), y1 = Math.max(start[1], p[1]);
+    if (x1 - x0 > 0.005 && y1 - y0 > 0.005) { card.boxes[card.mode] = [x0, y0, x1, y1]; drawBoxes(card); }
+  });
+  function end() { start = null; }
+  canvas.addEventListener("pointerup", end); canvas.addEventListener("pointercancel", end);
+
+  swatchCards.push(card);
+  $("swatchCards").appendChild(root);
+}
+function refreshRun() { $("runBtn").disabled = swatchCards.length === 0; }
+
+function showExtractResult(card, r) {
+  card.result.innerHTML = "";
+  var line = [el("span", { class: "hex", text: r.base_pigment_color })];
+  if (r.delta_e !== null) line.push(el("span", { class: "hint", text: "  ΔE=" + r.delta_e }));
+  card.result.appendChild(el("div", { class: "row" }, [el("div", { class: "chip", style: "background:" + r.base_pigment_color }), el("div", {}, line)]));
+  (r.warnings || []).forEach(function (w) { card.result.appendChild(el("div", { class: "warn", text: "⚠ " + (WARN_TEXT[w] || w) })); });
+  card.result.appendChild(el("div", { class: "hint", text: "correction: " + r.extraction.correction_source }));
+}
+
+async function runExtraction() {
+  var btn = $("runBtn"), st = $("runStatus");
+  btn.disabled = true;
+  for (var i = 0; i < swatchCards.length; i++) {
+    var card = swatchCards[i];
+    setStatus(st, "در حال پردازش " + (i + 1) + " از " + swatchCards.length + "…");
+    var fd = new FormData();
+    fd.append("swatch", card.file, card.file.name);
+    fd.append("name", card.nameInput.value.trim());
+    fd.append("skin_box", fmtBox(card.boxes.skin));
+    fd.append("swatch_box", fmtBox(card.boxes.swatch));
+    fd.append("correction_mode", $("modeSel").value);
+    if ($("anchorSel").value) fd.append("anchor_id", $("anchorSel").value);
+    if (card.expInput.value.trim()) fd.append("expected_color", card.expInput.value.trim());
+    try { showExtractResult(card, await api("/extract", { method: "POST", body: fd })); }
+    catch (e) { card.result.innerHTML = ""; card.result.appendChild(el("div", { class: "status err", text: e.message })); }
+  }
+  setStatus(st, "تموم شد.", "good");
+  btn.disabled = false;
+  loadHistory();
+}
+
+/* ---------------------------------------------------------- بخش ۲: اپلای روی لب */
+function refreshColorPicker() {
+  var box = $("colorPicker"); box.innerHTML = "";
+  savedColors.forEach(function (c) {
+    var chip = el("div", { class: "chip", style: "background:" + c.color, title: c.name + " " + c.color, onclick: function () {
+      Array.prototype.forEach.call(box.children, function (n) { n.classList.remove("selected"); });
+      chip.classList.add("selected");
+      $("manualColor").value = c.color;
+      refreshApplyBtn();
+    } });
+    box.appendChild(chip);
+  });
+}
+function refreshApplyBtn() {
+  var hasColor = /^#([0-9a-fA-F]{6})$/.test($("manualColor").value.trim());
+  $("applyBtn").disabled = !(hasColor && $("faceFile").files.length);
+}
+
+async function runApply() {
+  var st = $("applyStatus"), box = $("applyResult");
+  var color = $("manualColor").value.trim();
+  var file = $("faceFile").files[0];
+  if (!file) return;
+  setStatus(st, "در حال پردازش…");
+  var fd = new FormData();
+  fd.append("photo", file, file.name);
+  fd.append("color", color);
+  try {
+    var r = await fetch("/apply", { method: "POST", body: fd });
+    if (!r.ok) {
+      var t = await r.text();
+      try { var j = JSON.parse(t); t = j.detail || t; } catch (e) {}
+      throw new Error(r.status + " — " + t);
+    }
+    var blob = await r.blob();
+    box.innerHTML = "";
+    box.appendChild(el("div", { class: "item" }, [
+      el("img", { class: "thumb", style: "height:auto;width:100%", src: URL.createObjectURL(blob) }),
+      el("div", { class: "hint", text: "رنگ اپلای‌شده: " + color })
+    ]));
+    setStatus(st, "انجام شد.", "good");
+  } catch (e) { setStatus(st, e.message, "err"); }
+}
+
+/* ---------------------------------------------------------- تاریخچه */
+async function loadHistory() {
+  var body = $("history"); body.innerHTML = "";
+  var items = await api("/extractions");
+  savedColors = items.map(function (r) { return { name: r.name, color: r.base_pigment_color }; });
+  refreshColorPicker();
+  if (!items.length) { body.appendChild(el("tr", {}, [el("td", { colspan: "7", class: "hint", text: "هنوز نتیجه‌ای ذخیره نشده." })])); return; }
+  items.forEach(function (r) {
+    body.appendChild(el("tr", {}, [
+      el("td", {}, [el("a", { href: r.image_url, target: "_blank" }, [el("img", { class: "thumb", src: r.image_url })])]),
+      el("td", { text: r.name }),
+      el("td", {}, [el("span", { style: "display:inline-block;width:18px;height:18px;vertical-align:middle;border-radius:4px;background:" + r.base_pigment_color }), document.createTextNode(" "), el("span", { class: "hex", text: r.base_pigment_color })]),
+      el("td", { class: "ltr", text: r.expected_color || "-" }),
+      el("td", { class: "ltr", text: r.delta_e === null ? "-" : String(r.delta_e) }),
+      el("td", { class: "warn", text: (r.warnings || []).map(function (w) { return WARN_TEXT[w] || w; }).join("، ") }),
+      el("td", {}, [el("button", { text: "حذف", onclick: async function () {
+        try { await api("/extractions/" + r.id, { method: "DELETE" }); loadHistory(); } catch (e) { alert(e.message); }
+      } })])
+    ]));
+  });
+}
+
+async function init() {
+  try {
+    (await api("/anchors")).forEach(function (a) {
+      $("anchorSel").appendChild(el("option", { value: String(a.id), text: a.name + " (" + a.reference_color + ")" }));
+    });
+    await loadHistory();
+  } catch (e) { setStatus($("runStatus"), "اتصال به سرور برقرار نشد: " + e.message, "err"); }
+}
+$("swatchFiles").addEventListener("change", function (ev) {
+  Array.prototype.forEach.call(ev.target.files, addSwatchCard);
+  ev.target.value = ""; refreshRun();
+});
+$("runBtn").addEventListener("click", runExtraction);
+$("manualColor").addEventListener("input", refreshApplyBtn);
+$("faceFile").addEventListener("change", refreshApplyBtn);
+$("applyBtn").addEventListener("click", runApply);
+init();
+</script>
+</body>
+</html>

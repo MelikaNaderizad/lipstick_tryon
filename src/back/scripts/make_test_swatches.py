@@ -1,16 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-ساخت عکس‌های سواچ «مصنوعی ولی با جواب معلوم» برای تست منطق استخراج رنگ.
-
-هر عکس طبق قالب راهنمای عکس‌گیری دو کادر داره (چپ پوست خالی، راست رژ) و ما
-رنگ خالص رژ رو از قبل می‌دونیم؛ پس بعد از آپلود می‌شه دقیقاً سنجید که بک‌اند
-چقدر به رنگ درست نزدیک شده (ΔE). هر عکس یه «شرایط» متفاوت رو شبیه‌سازی می‌کنه:
-نور گرم/سرد/کم‌نور، پوست روشن/تیره، هایلایت گلاس، کارت خاکستری.
-
-اجرا:
-    cd src/back
-    python -m scripts.make_test_swatches            # خروجی: test_swatches/
-"""
 import json
 import os
 import sys
@@ -36,7 +24,6 @@ LIGHTS = {
 
 def make_swatch_image(skin_hex, pigment_hex, light="neutral", gloss_highlight=False,
                       gray_card=False, w=800, h=600, noise=2.0, seed=0):
-    """تصویر RGB (uint8) با دو کادر پوست/سواچ در مکان‌های قالب پیش‌فرض."""
     rng = np.random.default_rng(seed)
     light_v = np.array(LIGHTS[light] if isinstance(light, str) else light, dtype=np.float64)
     skin = rgb255_to_linear(hex_to_rgb255(skin_hex)) * light_v
@@ -46,11 +33,10 @@ def make_swatch_image(skin_hex, pigment_hex, light="neutral", gloss_highlight=Fa
     img[:, : w // 2] = skin
     img[:, w // 2:] = pig
 
-    # شیب نور ملایم روی کل عکس (یه‌کم واقعی‌تر از رنگ تخت)
     ramp = np.linspace(0.96, 1.04, w)[None, :, None]
     img = img * ramp
 
-    if gloss_highlight:  # لکه‌ی درخشش نزدیک سفید وسط کادر سواچ
+    if gloss_highlight:
         x0, y0, x1, y1 = DEFAULT_SWATCH_BOX
         cx, cy = int((x0 + x1) / 2 * w), int((y0 + y1) / 2 * h)
         yy, xx = np.mgrid[0:h, 0:w]
@@ -66,9 +52,6 @@ def make_swatch_image(skin_hex, pigment_hex, light="neutral", gloss_highlight=Fa
     return np.clip(rgb, 0, 255).astype(np.uint8)
 
 
-# اسم، رنگ خالص واقعی، نوع محصول، پوست، نور، هایلایت، کارت خاکستری، Anchor انتخابی،
-# و (اختیاری) توضیح «محدودیت شناخته‌شده» — یعنی این حالت عمداً ضعیفه تا رفتار واقعی
-# سیستم مستند بشه (اگه ΔE از آستانه بیشتر شد خطا حساب نمی‌شه، فقط ⚠ می‌گیره).
 CASES = [
     ("rose-classic-neutral", "#B0223A", "liquid", "#F4DBC9", "neutral", False, False, None),
     ("coral-warm-light", "#E0645A", "liquid", "#D9B48A", "warm", False, False, None,

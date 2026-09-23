@@ -1,11 +1,8 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
-psycopg2-binary
-python-dotenv
 numpy
 Pillow
-python-jose[cryptography]
 python-multipart
-minio
-alembic
+opencv-python-headless
+scikit-learn
+mediapipe==0.10.13

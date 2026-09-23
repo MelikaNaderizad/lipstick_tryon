@@ -7,3 +7,4 @@ __pycache__/
 synthetic_samples/
 test_swatches/
 local_storage/
+src/back/data/
