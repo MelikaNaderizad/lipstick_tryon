@@ -34,6 +34,10 @@
   .warn { font-size: 12px; color: #b26a00; line-height: 1.7; }
   .meta { font-size: 11px; color: var(--mut); direction: ltr; text-align: left; word-break: break-all; }
   .hidden { display: none !important; }
+  .live-chip { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); flex: none; cursor: pointer; }
+  .live-chip.selected { outline: 2px solid var(--pink); outline-offset: 2px; }
+  #liveStage { position: relative; max-width: 460px; margin: 10px auto 0; }
+  #liveCanvas { width: 100%; border-radius: 8px; background: #111; }
 </style>
 </head>
 <body>
@@ -93,8 +97,30 @@
     </div>
   </div>
 
+  <div class="panel" id="livePanel">
+    <h2>۳. پیش‌نمایش لایو با دوربین</h2>
+    <div class="hint">
+      یکی از رنگ‌های همین محصول رو انتخاب کن (یا هگز دستی بنویس)، بعد دوربین رو فعال کن.
+      ماسک لب و ترکیب رنگ دقیقاً همون منطق <code>src/live-demo/index.html</code> ـه: لندمارک لب با
+      MediaPipe، ترکیب رنگ در فضای Lab (فقط a/b عوض می‌شه، L با ضریب کم حفظ می‌شه تا بافت/های‌لایت
+      طبیعی لب از بین نره)، لبه‌ی ماسک هم فدر (نرم) شده.
+    </div>
+    <div class="row" id="liveColorPicker" style="margin-top:8px"></div>
+    <div class="row">
+      <label>یا رنگ دستی</label>
+      <input type="text" id="liveManualColor" placeholder="#B0223A" style="direction:ltr">
+      <button id="liveStartBtn" class="primary">فعال کردن دوربین</button>
+      <button id="liveStopBtn" disabled>خاموش کردن دوربین</button>
+    </div>
+    <div class="status" id="liveStatus"></div>
+    <div id="liveStage">
+      <video id="liveVideo" autoplay playsinline muted style="display:none"></video>
+      <canvas id="liveCanvas"></canvas>
+    </div>
+  </div>
+
   <div class="panel">
-    <h2>۳. نتیجه‌ی استخراج <span id="approvedInfo" class="hint"></span></h2>
+    <h2>۴. نتیجه‌ی استخراج <span id="approvedInfo" class="hint"></span></h2>
     <div class="hint" style="margin-bottom:10px">
       برای هر رنگ، بخش بریده‌شده‌ی عکس (چپ) کنار رنگ استخراج‌شده (راست) دیده می‌شه. اگه شبیه نیستن، رنگ رو اصلاح یا رد کن.
     </div>
@@ -287,14 +313,38 @@ async function uploadAll() {
   await loadOverview(); // شمارنده‌ها
 }
 
-/* ---------------------------------------------------------- نتایج */
+/* ---------------------------------------------------------- نتایج + رنگ‌های بخش لایو */
+function updateLiveColorChips(shades) {
+  var box = $("liveColorPicker"); box.innerHTML = "";
+  if (!shades.length) {
+    box.appendChild(el("span", { class: "hint", text: "هنوز رنگی برای این محصول ثبت نشده." }));
+    return;
+  }
+  shades.forEach(function (s, i) {
+    var chip = el("div", {
+      class: "live-chip", style: "background:" + s.base_pigment_color, title: s.name + " " + s.base_pigment_color,
+      onclick: function () {
+        Array.prototype.forEach.call(box.children, function (n) { n.classList && n.classList.remove("selected"); });
+        chip.classList.add("selected");
+        $("liveManualColor").value = s.base_pigment_color;
+      }
+    });
+    box.appendChild(chip);
+    if (i === 0 && !$("liveManualColor").value) {
+      $("liveManualColor").value = s.base_pigment_color;
+      chip.classList.add("selected");
+    }
+  });
+}
+
 async function loadShades() {
   var box = $("results"); box.innerHTML = "";
-  if (!state.productId) { $("approvedInfo").textContent = ""; return; }
+  if (!state.productId) { $("approvedInfo").textContent = ""; updateLiveColorChips([]); return; }
   var shades = await api("/seller/products/" + state.productId + "/shades");
   var approved = shades.filter(function (s) { return s.status === "approved"; }).length;
   $("approvedInfo").textContent = shades.length ? "(" + approved + " از " + shades.length + " تأیید شده)" : "(هنوز رنگی نیست)";
   shades.forEach(function (s) { box.appendChild(shadeCard(s)); });
+  updateLiveColorChips(shades);
 }
 function drawCompare(canvas, s) {
   var ctx = canvas.getContext("2d");
@@ -370,6 +420,214 @@ $("files").addEventListener("change", function (ev) {
   $("uploadBtn").disabled = !(state.productId && state.cards.length);
 });
 init();
+</script>
+
+<script type="module">
+/*
+ * بخش ۳ — پیش‌نمایش لایو با دوربین، توی همون فرانت.
+ * منطق دقیقاً همون src/live-demo/index.html / app/lip_apply.py ـه:
+ *   - لندمارک لب با MediaPipe FaceLandmarker
+ *   - ماسک لب: بیرونی پر، داخلی با evenodd خالی (= فقط خودِ لب)، لبه فدرشده
+ *   - ترکیب رنگ در فضای CIE Lab (D65): فقط a/b عوض می‌شه، L با ضریب کم حفظ می‌شه
+ * رنگ هدف از همین صفحه (چیپ‌های بخش ۳ یا فیلد رنگ دستی) خونده می‌شه، نه از یه
+ * فایل/صفحه‌ی جدا.
+ */
+import {
+  FaceLandmarker,
+  FilesetResolver,
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const $$ = (id) => document.getElementById(id);
+
+const LIPS_OUTER = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
+const LIPS_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78];
+
+const BLEND_RATIO = 0.85;     // = BASE_OPACITY توی app/color_engine/blend.py
+const L_BLEND_RATIO = 0.25;   // = l_blend_ratio توی lip_apply.py (حفظ های‌لایت/بافت لب)
+const FEATHER_PX = 4;         // = feather_px توی lip_apply.py (لبه‌ی نرم ماسک)
+const DEFAULT_COLOR = "#B0223A";
+
+function srgbToLinear(c) {
+  c = c / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function linearToSrgb(c) {
+  c = Math.max(0, Math.min(1, c));
+  const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  return Math.round(Math.max(0, Math.min(1, s)) * 255);
+}
+function hexToRgb(hex) {
+  const v = parseInt(hex.replace("#", ""), 16);
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+const _XN = 0.95047, _YN = 1.0, _ZN = 1.08883;
+function _fLab(t) {
+  const d = 6 / 29;
+  return t > d * d * d ? Math.cbrt(t) : t / (3 * d * d) + 4 / 29;
+}
+function _fLabInv(t) {
+  const d = 6 / 29;
+  return t > d ? t * t * t : 3 * d * d * (t - 4 / 29);
+}
+function rgbToLab(r, g, b) {
+  const rl = srgbToLinear(r), gl = srgbToLinear(g), bl = srgbToLinear(b);
+  const x = 0.4124564 * rl + 0.3575761 * gl + 0.1804375 * bl;
+  const y = 0.2126729 * rl + 0.7151522 * gl + 0.0721750 * bl;
+  const z = 0.0193339 * rl + 0.1191920 * gl + 0.9503041 * bl;
+  const fx = _fLab(x / _XN), fy = _fLab(y / _YN), fz = _fLab(z / _ZN);
+  return { l: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+function labToRgb(l, a, b) {
+  const fy = (l + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  const x = _fLabInv(fx) * _XN, y = _fLabInv(fy) * _YN, z = _fLabInv(fz) * _ZN;
+  const rl = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+  const gl = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+  const bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+  return { r: linearToSrgb(rl), g: linearToSrgb(gl), b: linearToSrgb(bl) };
+}
+function hexToLab(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToLab(r, g, b);
+}
+function currentTargetHex() {
+  const v = ($$("liveManualColor").value || "").trim();
+  return /^#([0-9a-fA-F]{6})$/.test(v) ? v : DEFAULT_COLOR;
+}
+
+const video = $$("liveVideo");
+const canvas = $$("liveCanvas");
+const ctx = canvas.getContext("2d");
+const startBtn = $$("liveStartBtn");
+const stopBtn = $$("liveStopBtn");
+const statusEl = $$("liveStatus");
+
+let faceLandmarker = null;
+let stream = null;
+let running = false;
+let maskCanvas = null, maskCtx = null;
+
+function setLiveStatus(text, kind) {
+  statusEl.textContent = text || "";
+  statusEl.className = "status " + (kind || "");
+}
+
+function buildLipsAlphaMask(w, h, landmarks) {
+  if (!maskCanvas) { maskCanvas = document.createElement("canvas"); maskCtx = maskCanvas.getContext("2d"); }
+  maskCanvas.width = w;
+  maskCanvas.height = h;
+  maskCtx.clearRect(0, 0, w, h);
+  maskCtx.filter = FEATHER_PX > 0 ? `blur(${FEATHER_PX}px)` : "none";
+  maskCtx.fillStyle = "#fff";
+  maskCtx.beginPath();
+  LIPS_OUTER.forEach((idx, i) => {
+    const p = landmarks[idx];
+    const x = p.x * w, y = p.y * h;
+    if (i === 0) maskCtx.moveTo(x, y); else maskCtx.lineTo(x, y);
+  });
+  maskCtx.closePath();
+  LIPS_INNER.forEach((idx, i) => {
+    const p = landmarks[idx];
+    const x = p.x * w, y = p.y * h;
+    if (i === 0) maskCtx.moveTo(x, y); else maskCtx.lineTo(x, y);
+  });
+  maskCtx.closePath();
+  maskCtx.fill("evenodd");
+  maskCtx.filter = "none";
+  return maskCtx.getImageData(0, 0, w, h).data;
+}
+
+async function initMediaPipe() {
+  setLiveStatus("در حال بارگذاری مدل تشخیص چهره…");
+  const filesetResolver = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+    baseOptions: {
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      delegate: "GPU",
+    },
+    outputFaceBlendshapes: false,
+    outputFacialTransformationMatrixes: false,
+    runningMode: "VIDEO",
+    numFaces: 1,
+  });
+}
+
+function renderLoop() {
+  if (!running) return;
+  const now = performance.now();
+  const result = faceLandmarker.detectForVideo(video, now);
+
+  const w = canvas.width, h = canvas.height;
+  ctx.drawImage(video, 0, 0, w, h);
+
+  if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+    const landmarks = result.faceLandmarks[0];
+    const maskData = buildLipsAlphaMask(w, h, landmarks);
+    const frame = ctx.getImageData(0, 0, w, h);
+    const data = frame.data;
+    const targetLab = hexToLab(currentTargetHex());
+
+    for (let i = 0; i < data.length; i += 4) {
+      const maskAlpha = maskData[i + 3] / 255;
+      if (maskAlpha <= 0.003) continue;
+
+      const lab = rgbToLab(data[i], data[i + 1], data[i + 2]);
+      const alpha = maskAlpha * BLEND_RATIO;
+      const newA = lab.a * (1 - alpha) + targetLab.a * alpha;
+      const newB = lab.b * (1 - alpha) + targetLab.b * alpha;
+      const lAlpha = maskAlpha * BLEND_RATIO * L_BLEND_RATIO;
+      const newL = lab.l * (1 - lAlpha) + targetLab.l * lAlpha;
+
+      const out = labToRgb(newL, newA, newB);
+      data[i] = out.r;
+      data[i + 1] = out.g;
+      data[i + 2] = out.b;
+    }
+    ctx.putImageData(frame, 0, 0);
+  } else {
+    setLiveStatus("چهره‌ای پیدا نشد — رو‌به‌روی دوربین قرار بگیر.");
+  }
+
+  requestAnimationFrame(renderLoop);
+}
+
+async function startLive() {
+  startBtn.disabled = true;
+  try {
+    if (!faceLandmarker) await initMediaPipe();
+    setLiveStatus("در حال فعال‌سازی دوربین…");
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    video.srcObject = stream;
+    await new Promise((resolve) => { video.onloadedmetadata = resolve; });
+    await video.play();
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    running = true;
+    stopBtn.disabled = false;
+    setLiveStatus("");
+    requestAnimationFrame(renderLoop);
+  } catch (err) {
+    setLiveStatus("دسترسی به دوربین یا بارگذاری مدل ناموفق بود: " + err.message, "err");
+    startBtn.disabled = false;
+  }
+}
+
+function stopLive() {
+  running = false;
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  setLiveStatus("دوربین خاموش شد.");
+}
+
+startBtn.addEventListener("click", startLive);
+stopBtn.addEventListener("click", stopLive);
+window.addEventListener("beforeunload", stopLive);
 </script>
 </body>
 </html>
