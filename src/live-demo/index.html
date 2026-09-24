@@ -174,6 +174,9 @@ const statusEl = document.getElementById("status");
 
 // همون فرمول blend.py بک‌اند — باید هماهنگ نگه داشته بشه
 const BASE_OPACITY = 0.85;
+// معادل feather_px توی app/lip_apply.py — لبه‌ی ماسک رو نرم می‌کنه تا مرز لب
+// تیز/بریده به‌نظر نرسه (روی عکس‌های ثابت این کار با GaussianBlur انجام می‌شد).
+const FEATHER_PX = 4;
 
 const LIPS_OUTER = [61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146,61];
 const LIPS_INNER = [78,191,80,81,82,13,312,311,310,415,308,324,318,402,317,14,87,178,88,95,78];
@@ -184,6 +187,7 @@ let anchors = [];
 let selectedShade = null;
 let selectedAnchor = null; // null = رنگ زنده از روی پیکسل واقعی لب
 let cameraRunning = false;
+let maskCanvas = null, maskCtx = null;
 
 function srgbToLinear(c) {
   c = c / 255;
@@ -334,27 +338,32 @@ async function startCamera() {
   }
 }
 
+// بیرونی پر (fill) + داخلی با قانون evenodd خالی = فقط خودِ لب. یه بلور کوچیک
+// (FEATHER_PX) هم روی خودِ رسم زده می‌شه تا لبه‌ی ماسک تیز/بریده نباشه —
+// معادل feather_px (GaussianBlur) توی app/lip_apply.py برای عکس ثابت.
 function buildLipsAlphaMask(w, h, landmarks) {
-  const maskCanvas = document.createElement("canvas");
+  if (!maskCanvas) { maskCanvas = document.createElement("canvas"); maskCtx = maskCanvas.getContext("2d"); }
   maskCanvas.width = w;
   maskCanvas.height = h;
-  const mctx = maskCanvas.getContext("2d");
-  mctx.fillStyle = "#fff";
-  mctx.beginPath();
+  maskCtx.clearRect(0, 0, w, h);
+  maskCtx.filter = FEATHER_PX > 0 ? `blur(${FEATHER_PX}px)` : "none";
+  maskCtx.fillStyle = "#fff";
+  maskCtx.beginPath();
   LIPS_OUTER.forEach((idx, i) => {
     const p = landmarks[idx];
     const x = p.x * w, y = p.y * h;
-    if (i === 0) mctx.moveTo(x, y); else mctx.lineTo(x, y);
+    if (i === 0) maskCtx.moveTo(x, y); else maskCtx.lineTo(x, y);
   });
-  mctx.closePath();
+  maskCtx.closePath();
   LIPS_INNER.forEach((idx, i) => {
     const p = landmarks[idx];
     const x = p.x * w, y = p.y * h;
-    if (i === 0) mctx.moveTo(x, y); else mctx.lineTo(x, y);
+    if (i === 0) maskCtx.moveTo(x, y); else maskCtx.lineTo(x, y);
   });
-  mctx.closePath();
-  mctx.fill("evenodd");
-  return mctx.getImageData(0, 0, w, h).data;
+  maskCtx.closePath();
+  maskCtx.fill("evenodd");
+  maskCtx.filter = "none";
+  return maskCtx.getImageData(0, 0, w, h).data;
 }
 
 function renderLoop() {

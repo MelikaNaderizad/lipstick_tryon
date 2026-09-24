@@ -50,4 +50,4 @@ def get_current_seller(
             status.HTTP_403_FORBIDDEN,
             "این مسیر فقط برای فروشنده‌هاست — اول باید به‌عنوان فروشنده ثبت بشی",
         )
-    return seller
+    return seller 

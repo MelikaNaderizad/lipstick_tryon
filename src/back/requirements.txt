@@ -4,10 +4,12 @@ numpy
 Pillow
 python-multipart
 opencv-python-headless
-mediapipe==0.10.13
 sqlalchemy
 psycopg2-binary
 alembic
 minio
 python-dotenv
 python-jose[cryptography]
+pytest
+httpx
+

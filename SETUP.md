@@ -3,15 +3,18 @@
 اصل کار: **هیچ نمونه‌ی ساختگی و هیچ تست خودکاری روی دیتابیس نیست.** دیتابیس با جدول‌ها و ۶ Anchor مرجع شروع می‌شه
 و تنها رنگ‌ها همون‌هایی هستن که خودت از سواچ‌های واقعی آپلود می‌کنی.
 
-## ۱. Extract و پاک‌سازی
-زیپ رو توی ریشه‌ی ریپو extract کن (overwrite بزن). `restore_parked.py` باید قبلاً اجرا شده باشه. بعد:
+## ۰. پاک‌سازی مسیر سبک/بدون-دیتابیس قبلی (یک‌بار)
+اون مسیر (`extract.html`, `/extract`, `/apply`, `store.py`, `lip_apply.py`) فقط برای ارائه‌ی
+ماژولار به کارفرما قبل از آماده شدن Postgres/MinIO ساخته شده بود. حالا که دیتابیس آماده‌ست:
 ```bash
-python cleanup_and_fix.py            # پیش‌نمایش
-python cleanup_and_fix.py --apply    # اعمال (قبلش commit بگیر)
+python remove_legacy_files.py            # پیش‌نمایش
+python remove_legacy_files.py --apply    # حذف واقعی (قبلش commit بگیر)
 ```
-اگه نسخه‌ی قبلی زیپ رو اجرا کرده بودی مشکلی نیست؛ همه‌چیز idempotent ـه.
+و این فایل‌ها رو از زیپ همراه جایگزین کن (تغییر کردن، نه فقط حذف):
+`src/back/app/main.py`، `src/back/requirements.txt`، `src/back/tests/conftest.py`،
+`src/live-demo/index.html`. Idempotent ـه؛ اگه قبلاً اجرا کرده باشی مشکلی نیست.
 
-## ۲. زیرساخت
+## ۱. زیرساخت
 ```bash
 docker compose up -d postgres minio
 cd src/back
@@ -26,23 +29,35 @@ docker compose up -d postgres minio
 python -m scripts.init_infra
 ```
 
-## ۳. گذاشتن سواچ‌های خودت
+## ۲. گذاشتن سواچ‌های خودت
 1. `http://localhost:8000/review`
 2. برند و محصول رو بساز، عکس‌های سواچ رو انتخاب کن، کادر آبی (پوست) و سبز (رژ) رو بکش، «آپلود و استخراج رنگ».
    عکس می‌ره MinIO و رنگ/متادیتا توی Postgres.
 3. رنگ استخراج‌شده رو با عکس مقایسه کن؛ لازم بود اصلاحش کن (انتخابگر رنگ) و «تأیید» بزن.
-4. `src/live-demo/index.html` رنگ‌های **تأییدشده** رو مستقیم از دیتابیس می‌گیره (`GET /demo/shades`).
-   برای دیدن همه‌ی رنگ‌ها، حتی تأییدنشده‌ها: `/demo/shades?include_all=true`.
+
+## ۳. دموی لایو
+`src/live-demo/index.html` رو مستقیم توی مرورگر باز کن (هیچ سروی لازم نداره، فقط باید بک‌اند
+بالا باشه). آدرس بک‌اند بالای صفحه قابل تنظیمه. این صفحه رنگ‌های **تأییدشده** رو مستقیم از
+دیتابیس می‌گیره (`GET /demo/shades`). برای دیدن همه‌ی رنگ‌ها، حتی تأییدنشده‌ها:
+`/demo/shades?include_all=true`. ماسک لب و ترکیب رنگ کاملاً سمت مرورگره (MediaPipe + Lab)،
+دقیقاً هم‌خوان با چیزی که موتور رنگ سرور (`color_engine/blend.py`) محاسبه می‌کنه.
 
 ## چی عوض شد نسبت به زیپ قبلی
-- **حذف شد:** `seed_demo_data.py` (برند/محصول/رنگ نمونه)، `scripts/sample_swatches/`، `upload_swatches.py` (سواچ ساختگی می‌ساخت و برند «Test» می‌ریخت) و `tests/test_upload_api.py`.
-  `tests/conftest.py` هم به نسخه‌ی اصلی خودت برگشت (بدون SQLite جعلی و MinIO جعلی).
-- **Anchorها** حالا داخل `init_infra.py` ساخته می‌شن؛ `run_local.py` هم از همون‌جا می‌خونه.
-- **دموی لایو:** متن «Seed شده» عوض شد و اگه هنوز رنگ تأییدشده‌ای نباشه پیام می‌ده.
-- بقیه‌ی اصلاحات زیپ قبلی (ICC، تراکنش، `def` به‌جای `async def`، فقط approved توی `/demo/shades`، حذف کد مرده و تکراری) همون‌طوری‌ه.
+- **حذف شد (این نوبت):** مسیر سبک/بدون-دیتابیس (`app/static/extract.html`, `app/store.py`,
+  `app/lip_apply.py`, `tests/test_api.py`) — دیگه لازم نیست چون دیتابیس آماده‌ست.
+  `app/main.py` هم متناسب ساده شد (`/`, `/anchors`, `/extract`, `/apply`, `/extractions*` حذف شدن؛
+  `/` حالا به `/review` ریدایرکت می‌شه). `requirements.txt` بدون `mediapipe` (دیگه سمت سرور
+  استفاده نمی‌شه — پیش‌نمایش لایو کامل توی مرورگره).
+- **بهبود:** `src/live-demo/index.html` حالا لبه‌ی ماسک لب رو هم فدر (feather) می‌کنه، معادل
+  `feather_px` که قبلاً فقط توی نسخه‌ی پایتونی/عکس ثابت بود.
+- (تغییرات نوبت قبل هم پابرجاست: Anchorها داخل `init_infra.py`، `run_local.py` هم از همون‌جا
+  می‌خونه، دموی لایو پیام «هنوز رنگی نیست» می‌ده، ICC→sRGB، تراکنش‌ها، فقط approved توی
+  `/demo/shades`.)
 
 ## عمداً دست نزدم
-- **`make_test_swatches.py`، `run_manifest.py` و `test_extraction.py`، `test_api.py`، `test_imaging.py`:** ابزار و تست منطق رنگ از فاز اول خودتن و به دیتابیس چیزی نمی‌نویسن
-  (`test_extraction.py` به `make_test_swatches.py` وابسته‌ست). اگه اینا رو هم نمی‌خوای بگو پاک کنم.
-- **مسیر سبک `/extract` + `extract.html` + `store.py`:** پیش‌نمایش روی لب (`/apply`) فقط اونجاست.
-- **`run_local.py` و `STORAGE_BACKEND=local`:** اجرا بدون Docker (SQLite + پوشه‌ی محلی) هنوز ممکنه.
+- **`make_test_swatches.py`، `run_manifest.py` و `test_extraction.py`، `test_extraction_smear.py`،
+  `test_imaging.py`:** ابزار و تست منطق رنگ/عکس، مستقیم تابع‌ها رو صدا می‌زنن (نه از طریق API)،
+  پس مستقل از دیتابیس و از مسیر سبک حذف‌شده‌ان.
+- **`run_local.py` و `STORAGE_BACKEND=local`:** اجرا بدون Docker (SQLite + پوشه‌ی محلی) هنوز ممکنه؛
+  این یه گزینه‌ی dev‌ـه، نه همون مسیر «بدون دیتابیس» که حذف شد (این یکی همچنان یه دیتابیس واقعی
+  می‌سازه، فقط SQLite به‌جای Postgres).
