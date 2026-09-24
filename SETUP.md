@@ -11,8 +11,8 @@ python remove_legacy_files.py            # پیش‌نمایش
 python remove_legacy_files.py --apply    # حذف واقعی (قبلش commit بگیر)
 ```
 و این فایل‌ها رو از زیپ همراه جایگزین کن (تغییر کردن، نه فقط حذف):
-`src/back/app/main.py`، `src/back/requirements.txt`، `src/back/tests/conftest.py`،
-`src/live-demo/index.html`. Idempotent ـه؛ اگه قبلاً اجرا کرده باشی مشکلی نیست.
+`src/back/app/main.py`، `src/back/requirements.txt`، `src/back/tests/conftest.py`.
+Idempotent ـه؛ اگه قبلاً اجرا کرده باشی مشکلی نیست.
 
 ## ۱. زیرساخت
 ```bash
@@ -36,23 +36,27 @@ python -m scripts.init_infra
 3. رنگ استخراج‌شده رو با عکس مقایسه کن؛ لازم بود اصلاحش کن (انتخابگر رنگ) و «تأیید» بزن.
 
 ## ۳. دموی لایو
-`src/live-demo/index.html` رو مستقیم توی مرورگر باز کن (هیچ سروی لازم نداره، فقط باید بک‌اند
-بالا باشه). آدرس بک‌اند بالای صفحه قابل تنظیمه. این صفحه رنگ‌های **تأییدشده** رو مستقیم از
-دیتابیس می‌گیره (`GET /demo/shades`). برای دیدن همه‌ی رنگ‌ها، حتی تأییدنشده‌ها:
-`/demo/shades?include_all=true`. ماسک لب و ترکیب رنگ کاملاً سمت مرورگره (MediaPipe + Lab)،
-دقیقاً هم‌خوان با چیزی که موتور رنگ سرور (`color_engine/blend.py`) محاسبه می‌کنه.
+`http://localhost:8000/live` رو باز کن — نیازی به فایل جدا یا اجرای جداگونه نیست، همه‌چی از
+همون بک‌اندی که بالاست سرو می‌شه. لندمارک لب و ترکیب رنگ کاملاً سمت سرور انجام می‌شه
+(`/ws/live-tryon` + MediaPipe پایتون)؛ کلاینت فقط فریم دوربین رو می‌فرسته و فریم رنگ‌شده رو
+نمایش می‌ده. این صفحه رنگ‌های **تأییدشده** رو مستقیم از دیتابیس می‌گیره (`GET /demo/shades`).
+برای دیدن همه‌ی رنگ‌ها، حتی تأییدنشده‌ها: `/demo/shades?include_all=true` رو مستقیم صدا بزن
+(صفحه‌ی `/live` فعلاً فقط از approved استفاده می‌کنه).
+
+> مسیر قدیمی (`src/live-demo/index.html`، کاملاً سمت مرورگر با MediaPipe JS) دیگه استفاده
+> نمی‌شه — اون پوشه خالی/حذف‌شده می‌مونه؛ منطق لایو الان یه‌جا (Python) نگه‌داری می‌شه.
 
 ## چی عوض شد نسبت به زیپ قبلی
 - **حذف شد (این نوبت):** مسیر سبک/بدون-دیتابیس (`app/static/extract.html`, `app/store.py`,
   `app/lip_apply.py`, `tests/test_api.py`) — دیگه لازم نیست چون دیتابیس آماده‌ست.
   `app/main.py` هم متناسب ساده شد (`/`, `/anchors`, `/extract`, `/apply`, `/extractions*` حذف شدن؛
-  `/` حالا به `/review` ریدایرکت می‌شه). `requirements.txt` بدون `mediapipe` (دیگه سمت سرور
-  استفاده نمی‌شه — پیش‌نمایش لایو کامل توی مرورگره).
-- **بهبود:** `src/live-demo/index.html` حالا لبه‌ی ماسک لب رو هم فدر (feather) می‌کنه، معادل
-  `feather_px` که قبلاً فقط توی نسخه‌ی پایتونی/عکس ثابت بود.
-- (تغییرات نوبت قبل هم پابرجاست: Anchorها داخل `init_infra.py`، `run_local.py` هم از همون‌جا
-  می‌خونه، دموی لایو پیام «هنوز رنگی نیست» می‌ده، ICC→sRGB، تراکنش‌ها، فقط approved توی
-  `/demo/shades`.)
+  `/` حالا به `/review` ریدایرکت می‌شه). `requirements.txt` بدون `mediapipe==0.10.13`ی قدیمی
+  (سمت سرور استفاده نمی‌شد اون‌موقع) — نسخه‌ی جدیدِ `mediapipe` بعداً برای `/live` برگشت.
+- **بهبود:** دموی لایو از مرورگر منتقل شد بک‌اند: `app/routers/live.py` (WebSocket +
+  MediaPipe پایتون) و `app/color_engine/live_render.py` (ماسک لب + انتقال رنگ حفظ‌کننده‌ی
+  بافت در Lab)؛ صفحه‌ی کلاینتش `app/static/live.html` ـه، سرو شده روی `/live`.
+- (تغییرات نوبت‌های قبل هم پابرجاست: Anchorها داخل `init_infra.py`، `run_local.py` هم از همون‌جا
+  می‌خونه، ICC→sRGB، تراکنش‌ها، فقط approved توی `/demo/shades`.)
 
 ## عمداً دست نزدم
 - **`make_test_swatches.py`، `run_manifest.py` و `test_extraction.py`، `test_extraction_smear.py`،
