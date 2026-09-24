@@ -1,85 +1,75 @@
-# Lipstick swatch → color + lip preview (فاز اول)
+# Lipstick swatch → رنگ + پیش‌نمایش روی لب
 
-هدف: **فروشنده عکس سواچ رو آپلود می‌کنه، دو کادر می‌کشه (پوست + رژ)، رنگ خالص
-رژ رو می‌گیره** — و اختیاری اون رنگ رو روی یه عکس چهره پیش‌نمایش می‌کنه. بدون
-ورود/Auth، بدون دیتابیس، بدون MinIO، بدون Docker.
+فروشنده عکس سواچ رو آپلود می‌کنه، دو کادر می‌کشه (پوست خالی + رژ)، و رنگ خالص رژ استخراج می‌شه.
+عکس توی **MinIO** و رنگ/متادیتا توی **Postgres** ذخیره می‌شه؛ رنگ‌های تأییدشده برای دموی لایو
+(`src/live-demo`) استفاده می‌شن. سیستم **هیچ نمونه‌ی خودساخته‌ای** توی دیتابیس نمی‌ذاره:
+فقط سواچ‌هایی هست که خودت از `/review` آپلود کردی.
 
-## استخراج رنگ — GrabCut (الگوریتم استاندارد segmentation)
-قبلاً برای جدا کردن پیگمنت از پوست *داخل* کادر رژ، از یه آستانه‌ی ساده‌ی Otsu
-روی کروما استفاده می‌شد. جست‌وجو کردم دنیا برای این مسئله (یه کادر تقریبی دور
-یه شیء، جدا کردن دقیق شیء از پس‌زمینه) چی استفاده می‌کنه: **GrabCut** — الگوریتم
-کلاسیک segmentation (Rother/Kolmogorov/Blake، Microsoft Research، ۲۰۰۴)، دقیقاً
-برای همین مسئله طراحی شده و توی OpenCV آماده‌ست (`cv2.grabCut`). به‌جای یه
-آستانه‌ی ساده، رنگ پیش‌زمینه/پس‌زمینه رو با یه مدل آماری (GMM) یاد می‌گیره و
-همبستگی مکانی پیکسل‌ها رو هم در نظر می‌گیره (Graph Cut) — یعنی به لکه‌های
-نامنظم و نویز پوست مقاوم‌تره. کادر پوستی که خودت می‌کشی مستقیم به‌عنوان
-«پس‌زمینه‌ی قطعی» به GrabCut داده می‌شه.
+## دو مسیر (عمداً جدا)
+| | صفحه | ذخیره‌سازی | کاربرد |
+|---|---|---|---|
+| اصلی | `/review` ← `/seller/...` | Postgres + MinIO | آپلود، بررسی، تأیید/رد رنگ‌ها |
+| سبک | `/` ← `/extract`, `/apply` | فایل JSON (`src/back/data`) | آزمایش سریع استخراج + پیش‌نمایش روی عکس چهره، بدون دیتابیس |
 
-**تست عددی** (ΔE نسبت به رنگ واقعی، روی چند سناریوی سخت):
-| سناریو | نتیجه |
+فقط رنگ‌های **approved** توی `/demo/shades` (و در نتیجه دموی لایو) دیده می‌شن؛ `?include_all=true` همه رو می‌ده.
+
+## استخراج رنگ — GrabCut
+برای جدا کردن پیگمنت از پوست *داخل* کادر رژ از **GrabCut** (`cv2.grabCut`) استفاده می‌شه؛ کادر پوستی که
+فروشنده می‌کشه به‌عنوان «پس‌زمینه‌ی قطعی» بهش داده می‌شه. روی لکه‌های نامنظم و کادر شل مقاومه.
+
+| سناریو | ΔE |
 |---|---|
-| عکس واقعی‌ای که فرستادی (کادر شل دور لکه‌ی نامنظم) | ΔE = ۰.۰ |
-| کادر خیلی شل‌تر (فقط ۱۵٪ کادر پیگمنت) | ΔE ≈ ۲.۴ |
-| رژ نودی کم‌کروما + آلودگی شدید پوست | ΔE = ۰.۰ |
-| رژ آبی فانتزی + کادر شل | ΔE ≈ ۰.۶ |
-| هایلایت گلاس + کادر شل | ΔE ≈ ۰.۴ |
-| کادر کاملاً پر (بدون تغییر نسبت به قبل) | ΔE ≈ ۰.۵ |
+| کادر شل دور لکه‌ی نامنظم (عکس واقعی) | ۰.۰ |
+| کادر خیلی شل (فقط ۱۵٪ پیگمنت) | ≈ ۲.۴ |
+| رژ نودی کم‌کروما + آلودگی شدید پوست | ۰.۰ |
+| رژ آبی فانتزی + کادر شل | ≈ ۰.۶ |
+| هایلایت گلاس + کادر شل | ≈ ۰.۴ |
+| کادر کاملاً پر | ≈ ۰.۵ |
 
-اگه GrabCut توی کادر رژ چیزی پیدا نکنه (مثلاً کادر اشتباهاً روی پوست خالی
-کشیده شده)، به میانه‌ی کل کادر برمی‌گرده و هشدار `swatch_pigment_not_found`
-می‌ده — کرش نمی‌کنه.
-
-**هزینه:** هر استخراج حدود ۱ تا ۱.۵ ثانیه طول می‌کشه (قبلاً تقریباً آنی بود).
-برای آپلود (نه لایو) این قابل‌قبوله.
-
-روش قبلی خوشه‌بندی بدون کادر (`cluster_extraction.py`) هنوز توی کد هست، ولی نه
-این و نه Otsu دیگه استفاده نمی‌شن.
-
-## اپلای رنگ روی لب
-`POST /apply`: عکس چهره + رنگ (#RRGGBB) → همون عکس با رژ روی لب (MediaPipe
-FaceMesh + ترکیب Lab — همون منطقی که قبلاً توی `src/live-demo/index.html`
-برای حالت لایو پورت شده بود؛ این نسخه برای عکس ثابته).
+اگه GrabCut چیزی پیدا نکنه به میانه‌ی کل کادر برمی‌گرده و هشدار `swatch_pigment_not_found` می‌ده.
+هزینه: حدود ۱ تا ۱.۵ ثانیه برای هر استخراج (endpoint ها sync هستن تا سرور قفل نشه).
 
 ## اجرا
 ```bash
+docker compose up -d postgres minio        # از ریشه‌ی ریپو
 cd src/back
 pip install -r requirements-dev.txt
+python -m scripts.init_infra               # جدول‌ها + ۶ Anchor مرجع + bucket (هیچ نمونه‌ای نمی‌سازه)
 uvicorn app.main:app --reload
 ```
-بعد `http://localhost:8000/` یا `http://localhost:8000/docs`.
-نتیجه‌ها توی `src/back/data/results.json` و عکس‌ها توی `src/back/data/uploads/`.
+بعد `http://localhost:8000/review` (یا `/`، `/docs`، `/health`). جزئیات: `SETUP.md`.
 
-## حلقه‌ی سریع برای کار روی منطق (بدون سرور)
+بدون Docker (SQLite + پوشه‌ی محلی): `python -m scripts.run_local`.
+
+## تست و ابزار منطق رنگ (بدون دیتابیس)
 ```bash
 cd src/back
-python -m scripts.make_test_swatches
-python -m scripts.run_manifest --dir test_swatches
-pytest   # ⚠ حدود ۳۰ ثانیه طول می‌کشه چون GrabCut سنگین‌تر از قبله
+pytest                                                   # فقط منطق استخراج/API سبک؛ به دیتابیس چیزی نمی‌نویسه
+python -m scripts.make_test_swatches                     # عکس مصنوعی با جواب معلوم (فقط برای کار روی منطق)
+python -m scripts.run_manifest --dir test_swatches       # موتور رنگ روی یه پوشه عکس، بدون سرور
 ```
 
 ## ساختار
 ```
+docker-compose.yml                 # postgres + minio (+ backend)
 src/back/
   app/
-    main.py                       # /extract  /apply  /extractions  /anchors  /health  /
-    color_engine/
-      extraction.py                # ★ روش فعلی — کادر دستی + GrabCut
-      cluster_extraction.py        # روش بدون کادر — نگه‌داشته‌شده، پیش‌فرض نیست
-      colorspace.py, swatch_template.py
-    lip_apply.py                   # اپلای رنگ روی لب با MediaPipe (عکس ثابت)
-    anchors.py                     # ۶ Anchor پوست — فقط برای تصحیح نور اختیاری
-    imaging.py                     # خوندن عکس + تبدیل ICC (Display P3 و ...) به sRGB
-    store.py                       # ذخیره‌ی نتیجه‌ها توی JSON (بدون دیتابیس)
-    static/extract.html            # صفحه‌ی آپلود با کشیدن کادر + پیش‌نمایش لب
-  scripts/                         # make_test_swatches, run_manifest
+    main.py                        # /extract /apply /extractions /anchors /health / /review + روترها
+    routers/seller.py              # برند/محصول/آپلود سواچ/تأیید (Postgres + MinIO)
+    routers/demo.py                # /demo/shades (فقط approved) و /demo/skin-tone-anchors
+    models/  database.py  alembic/ # SQLAlchemy + migration
+    storage/                       # MinIO (یا پوشه‌ی محلی با STORAGE_BACKEND=local)
+    api/deps.py                    # هویت: AUTH_MODE=dev|jwt
+    uploads.py                     # خوندن/اعتبارسنجی عکس آپلودی (ICC→sRGB، سقف حجم/پیکسل)
+    imaging.py  anchors.py  store.py  lip_apply.py
+    color_engine/                  # extraction.py (GrabCut)، blend.py، colorspace.py، swatch_template.py
+    static/                        # review.html (اصلی)، extract.html (سبک)
+  scripts/                         # init_infra (جدول‌ها + Anchor + bucket)، run_local، make_test_swatches، run_manifest
   tests/
+src/live-demo/index.html           # دموی زنده (دوربین) — BASE_OPACITY باید با blend.py یکی بمونه
 ```
 
-## API
-- `POST /extract` (multipart): `swatch`، `skin_box`، `swatch_box` (کسری `x0,y0,x1,y1`، هر دو لازم)،
-  `correction_mode` (`none|exposure|full`, پیش‌فرض `none`)، `anchor_id` (اختیاری)،
-  `expected_color` (اختیاری؛ ΔE برمی‌گردونه)، `save` (پیش‌فرض true).
-  خروجی هر رکورد شامل `vivid_pixels_excluded_fraction` هم هست: چند درصد از کادر
-  رژ به‌عنوان «پوست» تشخیص داده و کنار گذاشته شد.
-- `POST /apply` (multipart): `photo`، `color` (#RRGGBB). خروجی: خود عکس با رژ.
-- `GET /extractions`, `GET /extractions/{id}`, `DELETE /extractions/{id}`, `GET /anchors`.
+## نکته‌ها
+- `AUTH_MODE=dev` فقط برای توسعه‌ست (هدر `X-External-User-Id`)؛ برای production: `AUTH_MODE=jwt` + `HOST_JWT_SECRET`.
+- ۶ Anchor پوست داده‌ی مرجع سیستمه (نه نمونه) و فقط توی `app/anchors.py` تعریف می‌شه؛ `init_infra` همون‌ها رو با همون idها توی دیتابیس می‌ذاره.
+- دموی لایو فقط رنگ‌های **approved** رو نشون می‌ده: بعد از آپلود توی `/review` «تأیید» رو بزن.

@@ -55,6 +55,13 @@
       </select>
       <label>تناژ پوست (اختیاری — فقط برای تصحیح نور)</label>
       <select id="anchorSel"><option value="">— حدس خودکار —</option></select>
+      <label>شفافیت رژ</label>
+      <select id="opacitySel">
+        <option value="">کدر (پیش‌فرض)</option>
+        <option value="0.8">کمی شفاف</option>
+        <option value="0.6">نیمه‌شفاف</option>
+        <option value="0.4">خیلی شفاف</option>
+      </select>
     </div>
     <div class="row"><input type="file" id="swatchFiles" accept="image/jpeg,image/png,image/webp" multiple></div>
     <div class="grid" id="swatchCards"></div>
@@ -99,7 +106,9 @@ var WARN_TEXT = {
   swatch_overexposed: "سواچ بیش‌ازحد روشنه",
   swatch_too_dark: "سواچ خیلی تاریکه",
   swatch_box_loosely_cropped: "کادر رژ دقیق روی پیگمنت نبود؛ سیستم خودش قسمت پوست رو کنار گذاشت — دفعه‌ی بعد کادر رو دقیق‌تر بکش",
-  swatch_pigment_not_found: "توی کادر رژ چیزی متفاوت از پوست پیدا نشد — احتمالاً کادر اشتباه کشیده شده"
+  swatch_pigment_not_found: "توی کادر رژ چیزی متفاوت از پوست پیدا نشد — احتمالاً کادر اشتباه کشیده شده",
+  swatch_may_be_sheer: "رژ به‌نظر شفافه؛ اگه واقعاً شفافه، «شفافیت رژ» رو انتخاب کن",
+  swatch_close_to_skin: "رنگ رژ خیلی نزدیک به پوسته؛ دقت پایین‌تره"
 };
 var swatchCards = [];
 var savedColors = [];
@@ -211,6 +220,7 @@ async function runExtraction() {
     fd.append("skin_box", fmtBox(card.boxes.skin));
     fd.append("swatch_box", fmtBox(card.boxes.swatch));
     fd.append("correction_mode", $("modeSel").value);
+    if ($("opacitySel").value) fd.append("opacity", $("opacitySel").value);
     if ($("anchorSel").value) fd.append("anchor_id", $("anchorSel").value);
     if (card.expInput.value.trim()) fd.append("expected_color", card.expInput.value.trim());
     try { showExtractResult(card, await api("/extract", { method: "POST", body: fd })); }

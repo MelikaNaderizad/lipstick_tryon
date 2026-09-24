@@ -64,3 +64,7 @@ def rgb255_to_hex(rgb255):
 
 def delta_e_76(lab1, lab2):
     return float(np.linalg.norm(np.asarray(lab1) - np.asarray(lab2)))
+
+
+def delta_e_hex(a_hex, b_hex):
+    return delta_e_76(rgb255_to_lab(hex_to_rgb255(a_hex)), rgb255_to_lab(hex_to_rgb255(b_hex)))

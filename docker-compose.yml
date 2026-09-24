@@ -40,7 +40,8 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/virtual_tryon
-      JWT_SECRET_KEY: change-this-to-a-long-random-secret
+      AUTH_MODE: dev
+      HOST_JWT_SECRET: change-this-to-a-long-random-secret
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin

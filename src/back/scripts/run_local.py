@@ -49,7 +49,7 @@ def main():
 
     from app.database import Base, SessionLocal, engine
     from app import models  # noqa: F401
-    from scripts.seed_demo_data import seed_skin_tone_anchors
+    from scripts.init_infra import seed_skin_tone_anchors
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

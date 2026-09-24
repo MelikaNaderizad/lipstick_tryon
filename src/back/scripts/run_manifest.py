@@ -23,7 +23,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.anchors import SKIN_TONE_ANCHORS  # noqa: E402
-from app.color_engine.colorspace import delta_e_76, hex_to_rgb255, rgb255_to_lab  # noqa: E402
+from app.color_engine.colorspace import delta_e_hex as delta_e  # noqa: E402
 from app.color_engine.extraction import extract_base_pigment_color  # noqa: E402
 from app.color_engine.swatch_template import (  # noqa: E402
     DEFAULT_SKIN_BOX, DEFAULT_SWATCH_BOX, parse_box, to_pixels,
@@ -31,10 +31,6 @@ from app.color_engine.swatch_template import (  # noqa: E402
 from app.imaging import decode_image  # noqa: E402
 
 EXTS = (".jpg", ".jpeg", ".png", ".webp")
-
-
-def delta_e(a_hex, b_hex):
-    return delta_e_76(rgb255_to_lab(hex_to_rgb255(a_hex)), rgb255_to_lab(hex_to_rgb255(b_hex)))
 
 
 def main():

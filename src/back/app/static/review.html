@@ -33,7 +33,6 @@
   .badge.approved { background: var(--ok); } .badge.rejected { background: var(--bad); }
   .warn { font-size: 12px; color: #b26a00; line-height: 1.7; }
   .meta { font-size: 11px; color: var(--mut); direction: ltr; text-align: left; word-break: break-all; }
-  .anchor-chip { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid var(--line); vertical-align:middle; margin-inline-end:4px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -115,7 +114,9 @@ var WARN_TEXT = {
   swatch_not_uniform: "سواچ یکدست نیست (کادر سبز روی لبه یا پوست افتاده؟)",
   swatch_patch_small: "کادر سبز خیلی کوچیکه",
   swatch_overexposed: "سواچ بیش‌ازحد روشنه",
-  swatch_too_dark: "سواچ خیلی تاریکه"
+  swatch_too_dark: "سواچ خیلی تاریکه",
+  swatch_box_loosely_cropped: "کادر سبز دقیق روی رژ نبود؛ سیستم قسمت پوست رو خودش کنار گذاشت — دفعه‌ی بعد دقیق‌تر بکش",
+  swatch_pigment_not_found: "توی کادر سبز چیزی متفاوت از پوست پیدا نشد — احتمالاً کادر اشتباه کشیده شده"
 };
 var STATUS_TEXT = { pending: "در انتظار", approved: "تأیید شده", rejected: "رد شده" };
 

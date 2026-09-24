@@ -130,7 +130,7 @@
 <body>
 
 <h2>دموی زنده‌ی Virtual Try-On</h2>
-<div class="sub">داده‌ها مستقیم از دیتابیس (Seed شده) میان — بدون نیاز به ثبت‌نام یا آپلود</div>
+<div class="sub">رنگ‌های تأییدشده‌ی خودت از دیتابیس میان (اول توی /review آپلود و تأیید کن)</div>
 
 <div class="api-box">
   <span>آدرس بک‌اند:</span>
@@ -270,6 +270,8 @@ function buildShadeButtons() {
   if (shades.length > 0) {
     selectedShade = shades[0];
     shadeRow.firstChild.classList.add("selected");
+  } else {
+    shadeRow.textContent = "هنوز رنگ تأییدشده‌ای نیست — از /review آپلود و تأیید کن.";
   }
 }
 

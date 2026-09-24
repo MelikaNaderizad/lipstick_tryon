@@ -1,89 +1,85 @@
 # -*- coding: utf-8 -*-
 """
-هسته‌ی مینیمال فاز اول: آپلود عکس سواچ (با دو کادرِ خودِ فروشنده: پوست + رژ)
-→ استخراج رنگ خالص رژ، به‌علاوه‌ی پیش‌نمایش اپلای رنگ روی لب برای یه عکس چهره.
+بک‌اند: استخراج رنگ سواچ (دو کادر: پوست + رژ) + پیش‌نمایش اپلای روی لب،
+به‌علاوه‌ی لایه‌ی Postgres + MinIO (روترهای /seller و /demo و صفحه‌ی /review).
 
-بدون Auth، بدون دیتابیس، بدون MinIO. اجرا:
+اجرا:
     cd src/back
     uvicorn app.main:app --reload
-بعد http://localhost:8000/ (صفحه‌ی آپلود) یا http://localhost:8000/docs
-
-روش استخراج رنگ: فروشنده خودش دو کادر می‌کشه — یکی روی پوست خالی (دست/مچ)،
-یکی دقیقاً روی رژِ کشیده‌شده. رنگ از میانه‌ی پیکسل‌های کادر رژ (در فضای خطی)
-به‌دست میاد، پس هرچی بیرون کادر باشه (آستین، پس‌زمینه، انگشت) روی نتیجه اثر
-نمی‌ذاره. جزئیات: app/color_engine/extraction.py
-
-روش قبلی (خوشه‌بندی بدون کادر، app/color_engine/cluster_extraction.py) هنوز
-توی کد هست ولی دیگه پیش‌فرض نیست — چون بدون کادر، اگه توی فریم چیز پررنگ‌تری
-از خودِ رژ باشه (مثلاً آستین قرمز)، ممکنه اون رو به‌جای رژ انتخاب کنه.
+بعد http://localhost:8000/review (آپلود سواچ به MinIO/Postgres)،
+http://localhost:8000/ (استخراج ساده بدون دیتابیس + پیش‌نمایش روی لب) یا http://localhost:8000/docs
 """
-import re
 from pathlib import Path
 
 import cv2
-import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.anchors import SKIN_TONE_ANCHORS, anchor_by_id
-from app.color_engine.colorspace import delta_e_76, hex_to_rgb255, rgb255_to_lab
+from app.color_engine.colorspace import delta_e_hex, hex_to_rgb255, rgb255_to_lab
 from app.color_engine.extraction import extract_base_pigment_color
 from app.color_engine.swatch_template import parse_box, to_pixels
-from app.imaging import ImageError, decode_image
+from app.database import SessionLocal
 from app.lip_apply import NoFaceDetected, apply_lipstick_to_image
+from app.routers import demo, seller
+from app.storage import backend as storage_backend
 from app.store import ResultStore
+from app.uploads import HEX_RE, read_upload
 
 app = FastAPI(title="Lipstick swatch color extraction")
 
-HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-ALLOWED_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+# برای live-demo که از یه origin دیگه صدا می‌زنه؛ توی production محدودش کن
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(seller.router)
+app.include_router(demo.router)
+
+if storage_backend.backend() == "local":  # فقط وقتی STORAGE_BACKEND=local
+    storage_backend.local_dir().mkdir(parents=True, exist_ok=True)
+    app.mount("/files", StaticFiles(directory=storage_backend.local_dir()), name="files")
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-def _rgb_to_bgr(rgb_array: np.ndarray) -> np.ndarray:
-    return cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
-
-
-def _read_upload(upload: UploadFile):
-    if upload.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "فقط JPEG/PNG/WebP قبول می‌شه")
-    raw = upload.file.read(MAX_UPLOAD_BYTES + 1)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "حجم فایل بیشتر از ۱۰ مگابایته")
-    try:
-        image, img_meta = decode_image(raw)
-    except ImageError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
-    return raw, image, img_meta, ALLOWED_TYPES[upload.content_type]
-
-
-def _parse_required_box(text, field):
-    if text is None or text.strip() == "":
+def _parse_required_box(text_value, field):
+    if text_value is None or text_value.strip() == "":
         raise HTTPException(422, f"{field} لازمه — کادرش رو روی عکس بکش")
     try:
-        return parse_box(text)
+        return parse_box(text_value)
     except ValueError as exc:
         raise HTTPException(422, f"{field}: {exc}")
 
 
-def _parse_optional_box(text, field):
-    if text is None or text.strip() == "":
+def _parse_optional_box(text_value, field):
+    if text_value is None or text_value.strip() == "":
         return None
     try:
-        return parse_box(text)
+        return parse_box(text_value)
     except ValueError as exc:
         raise HTTPException(422, f"{field}: {exc}")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+    return {"status": "ok", "database": db_status}
 
 
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(STATIC_DIR / "extract.html")
+
+
+@app.get("/review", include_in_schema=False)
+def review():
+    return FileResponse(STATIC_DIR / "review.html")
 
 
 @app.get("/anchors")
@@ -104,8 +100,8 @@ def extract(
     save: bool = Form(True),
 ):
     """
-    عکس سواچ + دو کادر (کسری ۰..۱: 'x0,y0,x1,y1') → رنگ خالص رژ. کادر رژ باید
-    کاملاً داخل رنگ رژ باشه؛ هرچی خارج این دو کادره (آستین، پس‌زمینه) بی‌اثره.
+    ابزار سبک بدون دیتابیس: عکس سواچ + دو کادر (کسری ۰..۱: 'x0,y0,x1,y1') → رنگ خالص رژ.
+    نتیجه فقط توی فایل JSON (src/back/data) ذخیره می‌شه؛ آپلود به Postgres/MinIO از /seller/... انجام می‌شه.
     correction_mode='none' یعنی همون رنگ خام کادر، بدون تصحیح نور.
     """
     if correction_mode not in ("none", "exposure", "full"):
@@ -124,7 +120,7 @@ def extract(
     swatch_frac = _parse_required_box(swatch_box, "swatch_box")
     gray_frac = _parse_optional_box(gray_box, "gray_box")
 
-    raw, image, img_meta, ext = _read_upload(swatch)
+    raw, image, img_meta, ext = read_upload(swatch)
     h, w = image.shape[:2]
     try:
         result = extract_base_pigment_color(
@@ -140,9 +136,7 @@ def extract(
         raise HTTPException(422, str(exc))
 
     color = result["base_pigment_color"]
-    delta_e = None
-    if expected:
-        delta_e = round(delta_e_76(rgb255_to_lab(hex_to_rgb255(expected)), rgb255_to_lab(hex_to_rgb255(color))), 2)
+    delta_e = round(delta_e_hex(expected, color), 2) if expected else None
 
     record = {
         "name": name.strip() or swatch.filename or "swatch",
@@ -177,13 +171,13 @@ def apply_lipstick(
     """عکس چهره + رنگ (#RRGGBB) → همون عکس با رژ روی لب (پیش‌نمایش، نه لایو)."""
     if not HEX_RE.match(color):
         raise HTTPException(422, "color باید #RRGGBB باشه")
-    _, image, _, _ = _read_upload(photo)
+    _, image, _, _ = read_upload(photo)
 
     lab = rgb255_to_lab(hex_to_rgb255(color))
     target_lab = {"l": float(lab[0]), "a": float(lab[1]), "b": float(lab[2])}
 
     try:
-        result_bgr = apply_lipstick_to_image(_rgb_to_bgr(image), target_lab)
+        result_bgr = apply_lipstick_to_image(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), target_lab)
     except NoFaceDetected as exc:
         raise HTTPException(422, str(exc))
     except ImportError:

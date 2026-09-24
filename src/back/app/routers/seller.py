@@ -1,10 +1,6 @@
-import io
-import re
 import uuid
 
-import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -17,7 +13,6 @@ from app.color_engine.swatch_template import (
     parse_box,
     to_pixels,
 )
-from app.color_engine.texture_profiles import profile_for
 from app.database import get_db
 from app.models.brand import Brand
 from app.models.product import PRODUCT_CATEGORIES, Product
@@ -26,13 +21,9 @@ from app.models.shade import Shade
 from app.models.shade_render_profile import ShadeRenderProfile
 from app.models.skin_tone_anchor import SkinToneAnchor
 from app.storage.backend import get_url, upload_bytes
+from app.uploads import HEX_RE, read_upload
 
 router = APIRouter(prefix="/seller", tags=["seller"])
-
-HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-MAX_PROCESS_SIDE = 1600
-ALLOWED_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 
 # ------------------------------------------------------------------ seller
@@ -117,10 +108,7 @@ def create_product(
 ):
     brand = _get_owned_brand(db, seller, brand_id)
     if payload.category not in PRODUCT_CATEGORIES:
-        raise HTTPException(
-            422,
-            f"category باید یکی از {list(PRODUCT_CATEGORIES)} باشه",
-        )
+        raise HTTPException(422, f"category باید یکی از {list(PRODUCT_CATEGORIES)} باشه")
     product = Product(
         brand_id=brand.id,
         name=payload.name,
@@ -177,7 +165,6 @@ def _shade_dict(shade: Shade, include_meta=True):
         "product_id": shade.product_id,
         "name": shade.name,
         "base_pigment_color": shade.base_pigment_color,
-        "pigment_alpha": shade.pigment_alpha,
         "color_source": shade.color_source,
         "swatch_image_path": shade.swatch_image_path,
         "swatch_image_url": get_url(shade.swatch_image_path),
@@ -189,18 +176,6 @@ def _shade_dict(shade: Shade, include_meta=True):
     return d
 
 
-def _decode_image(raw: bytes) -> np.ndarray:
-    try:
-        img = Image.open(io.BytesIO(raw))
-        img = ImageOps.exif_transpose(img)  # عکس‌های موبایل اغلب با EXIF چرخیده‌ان
-        img = img.convert("RGB")
-    except (UnidentifiedImageError, OSError):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "فایل یه تصویر معتبر نیست")
-    if max(img.size) > MAX_PROCESS_SIDE:
-        img.thumbnail((MAX_PROCESS_SIDE, MAX_PROCESS_SIDE))
-    return np.array(img)
-
-
 def _box_or_default(text, default, field):
     if text is None or text == "":
         return default
@@ -210,8 +185,17 @@ def _box_or_default(text, default, field):
         raise HTTPException(422, f"{field}: {exc}")
 
 
+def _add_render_profiles(db, shade, anchors):
+    """render_color این shade روی هر Anchor رو حساب می‌کنه و به session اضافه می‌کنه (commit با صدا زننده‌ست)."""
+    payload = [{"id": a.id, "reference_color": a.reference_color} for a in anchors]
+    for p in compute_all_render_profiles(shade.base_pigment_color, payload):
+        db.add(ShadeRenderProfile(shade_id=shade.id, **p))
+
+
+# sync (def) عمداً: استخراج رنگ (GrabCut) و DB/MinIO همه blocking هستن؛ FastAPI اجراشون
+# می‌کنه توی threadpool تا یه آپلود کل سرور رو قفل نکنه.
 @router.post("/products/{product_id}/shades", status_code=status.HTTP_201_CREATED)
-async def create_shade_from_swatch(
+def create_shade_from_swatch(
     product_id: int,
     name: str = Form(...),
     swatch: UploadFile = File(...),
@@ -230,17 +214,12 @@ async def create_shade_from_swatch(
     """
     product = _get_owned_product(db, seller, product_id)
 
-    if swatch.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "فقط JPEG/PNG/WebP قبول می‌شه")
     if correction_mode not in ("exposure", "full", "none"):
         raise HTTPException(422, "correction_mode نامعتبره")
     if manual_color and not HEX_RE.match(manual_color):
         raise HTTPException(422, "manual_color باید #RRGGBB باشه")
 
-    raw = await swatch.read()
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "حجم فایل بیشتر از ۱۰ مگابایته")
-    image = _decode_image(raw)
+    raw, image, img_meta, ext = read_upload(swatch)
 
     anchors = db.query(SkinToneAnchor).order_by(SkinToneAnchor.sort_order).all()
     target_anchor_hex = None
@@ -278,30 +257,27 @@ async def create_shade_from_swatch(
             "boxes_fraction": {"skin": skin_frac, "swatch": swatch_frac, "gray": gray_frac},
             "selected_anchor_id": skin_tone_anchor_id,
             "correction_mode": correction_mode,
+            "icc_converted": img_meta["icc_converted"],
         }
 
-    object_name = f"swatches/{seller.id}/{uuid.uuid4().hex}.{ALLOWED_TYPES[swatch.content_type]}"
+    object_name = f"swatches/{seller.id}/{uuid.uuid4().hex}.{ext}"
     try:
         upload_bytes(raw, object_name, content_type=swatch.content_type)
     except Exception as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"آپلود در MinIO ناموفق بود: {exc}")
 
+    # shade و render_profileهاش توی یک تراکنش: یا هر دو ساخته می‌شن یا هیچ‌کدوم
     shade = Shade(
         product_id=product.id,
         name=name,
         base_pigment_color=color_hex,
         swatch_image_path=object_name,
-        pigment_alpha=profile_for(product.category)["alpha"],
         color_source=color_source,
         extraction_meta=meta,
     )
     db.add(shade)
-    db.commit()
-    db.refresh(shade)
-
-    anchors_payload = [{"id": a.id, "reference_color": a.reference_color} for a in anchors]
-    for p in compute_all_render_profiles(shade.base_pigment_color, anchors_payload):
-        db.add(ShadeRenderProfile(shade_id=shade.id, **p))
+    db.flush()  # id رو می‌گیره بدون commit
+    _add_render_profiles(db, shade, anchors)
     db.commit()
     db.refresh(shade)
 
@@ -348,9 +324,7 @@ def override_shade_color(
 
     anchors = db.query(SkinToneAnchor).order_by(SkinToneAnchor.sort_order).all()
     db.query(ShadeRenderProfile).filter(ShadeRenderProfile.shade_id == shade.id).delete()
-    anchors_payload = [{"id": a.id, "reference_color": a.reference_color} for a in anchors]
-    for p in compute_all_render_profiles(shade.base_pigment_color, anchors_payload):
-        db.add(ShadeRenderProfile(shade_id=shade.id, **p))
+    _add_render_profiles(db, shade, anchors)
     db.commit()
     db.refresh(shade)
     return _shade_dict(shade)
@@ -368,7 +342,7 @@ def set_shade_status(
     seller: Seller = Depends(get_current_seller),
     db: Session = Depends(get_db),
 ):
-    """تأیید / رد / برگرداندن به «در انتظار» — برای مرحله‌ی تأیید کارفرما."""
+    """تأیید / رد / برگرداندن به «در انتظار» — فقط رنگ‌های approved توی /demo/shades دیده می‌شن."""
     if payload.status not in ("pending", "approved", "rejected"):
         raise HTTPException(422, "status باید pending یا approved یا rejected باشه")
     shade = _get_owned_shade(db, seller, shade_id)

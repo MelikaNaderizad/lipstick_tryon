@@ -47,8 +47,12 @@ def post(client, arr=None, **data):
 
 
 def test_health_and_index(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["database"] in ("ok", "error")  # بسته به بالا بودن Postgres
     page = client.get("/")
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    page = client.get("/review")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
     anchors = client.get("/anchors").json()
     assert len(anchors) == 6
@@ -68,8 +72,7 @@ def test_extract_reads_only_inside_swatch_box(client):
 
 
 def test_distractor_outside_boxes_is_ignored(client):
-    """نکته‌ی اصلی این نسخه: یه مستطیل قرمز پررنگ (شبیه آستین) بیرون کادرها
-    نباید رنگ استخراجی رو عوض کنه — چون فقط داخل کادر سبز خونده می‌شه."""
+    """یه مستطیل قرمز پررنگ (شبیه آستین) بیرون کادرها نباید رنگ استخراجی رو عوض کنه."""
     clean = make_image(pigment=(190, 150, 130))  # رژ نودی کم‌کروما
     with_sleeve = make_image(pigment=(190, 150, 130), distractor=(220, 20, 20))
     c1 = post(client, clean, save="false").json()["base_pigment_color"]

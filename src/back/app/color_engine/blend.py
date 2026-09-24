@@ -12,7 +12,7 @@ from app.color_engine.colorspace import (
     hex_to_rgb255,
 )
 
-# ضریب پوشش پایه. در ماژول ۲ به‌ازای هر نوع محصول از texture_profiles می‌آد.
+# ضریب پوشش ثابت برای همه‌ی انواع محصول (طبق SPECULAR_HIGHLIGHT_SPEC.md)؛ باید با BASE_OPACITY توی src/live-demo/index.html یکی بمونه.
 BASE_OPACITY = 0.85
 
 
