@@ -78,3 +78,37 @@ def test_box_outside_image_raises():
     img = make_swatch_image("#D9B48A", "#B0223A")
     with pytest.raises(ValueError):
         extract_base_pigment_color(img, (5000, 5000, 5100, 5100), (10, 10, 50, 50), skin_tone_anchors=ANCHORS)
+
+
+def test_loose_box_with_irregular_smear_still_finds_pigment():
+    """کادر مستطیلی دور یه لکه‌ی مورب نامنظم (اکثرش پوست) — دقیقاً باگ گزارش‌شده."""
+    from PIL import Image, ImageDraw
+    w, h = 600, 700
+    arr = np.full((h, w, 3), (238, 200, 175), dtype=np.uint8)
+    img = Image.fromarray(arr)
+    pig = "#B0223A"
+    draw = ImageDraw.Draw(img)
+    draw.line([(180, 470), (250, 420), (330, 350), (420, 280)], fill=(176, 34, 58), width=70, joint="curve")
+    arr = np.array(img)
+
+    skin_box = (200, 550, 400, 650)
+    swatch_box = (150, 250, 450, 500)  # مستطیل شل دور لکه؛ اکثرش پوسته
+    r = extract_base_pigment_color(arr, skin_box, swatch_box, correction_mode="none")
+    assert de(pig, r["base_pigment_color"]) < 6
+    assert "swatch_box_loosely_cropped" in r["warnings"]
+    assert r["vivid_pixels_excluded_fraction"] > 0.3
+
+
+def test_tight_box_gives_no_loose_crop_warning():
+    img = make_swatch_image("#F4DBC9", "#B0223A", "neutral")
+    r = run(img)
+    assert "swatch_box_loosely_cropped" not in r["warnings"]
+
+
+def test_swatch_box_drawn_entirely_on_skin_falls_back_with_warning():
+    """کادر رژ اشتباهاً روی خودِ پوست خالی کشیده شده — نباید کرش کنه."""
+    img = make_swatch_image("#F4DBC9", "#B0223A", "neutral")
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = to_pixels(DEFAULT_SKIN_BOX, w, h)
+    r = extract_base_pigment_color(img, to_pixels(DEFAULT_SKIN_BOX, w, h), (x0, y0, x1, y1), correction_mode="none")
+    assert "swatch_pigment_not_found" in r["warnings"]
