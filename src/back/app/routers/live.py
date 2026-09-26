@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 حالت لایو با WebSocket — همه‌چی (لندمارک لب + ترکیب رنگ) سمت بک‌اند.
-جایگزین نسخه‌ی قبلی که هم لندمارک (MediaPipe JS) هم blend رنگ سمت مرورگر بود.
 
 پروتکل:
   ۱. کلاینت وصل می‌شه به  /ws/live-tryon
-  ۲. هر وقت خواست، یه پیام متنی JSON برای تنظیم رنگ می‌فرسته:
-         {"target_color": "#RRGGBB"}
+  ۲. هر وقت خواست، یه پیام متنی JSON برای تنظیم رنگ/فینیش می‌فرسته:
+         {"target_color": "#RRGGBB", "finish": "gloss"}      (هر دو اختیاری)
+     finish یکی از کلیدهای FINISHES (liquid|stick|gloss|balm|oil|plumper) ـه.
   ۳. برای هر فریم، یه پیام باینری (JPEG) می‌فرسته. سرور فریم رنگ‌شده رو
      (یا فریم خام اگه چهره‌ای پیدا نشه) به‌صورت باینری (JPEG) برمی‌گردونه.
 
 نکته: چون MediaPipe FaceMesh thread-safe نیست، برای هر اتصال یه نمونه‌ی
-جدا ساخته می‌شه و موقع قطع اتصال بسته می‌شه.
+جدا ساخته می‌شه و موقع قطع اتصال بسته می‌شه. پردازش سنگین (MediaPipe + رنگ +
+JPEG) توی thread جدا اجرا می‌شه تا event loop قفل نشه؛ فریم‌های یه اتصال پشت
+سر هم پردازش می‌شن (هیچ‌وقت دو فراخوانی هم‌زمان روی یه FaceMesh نداریم).
 """
+import asyncio
 import json
 
 import cv2
@@ -20,7 +23,13 @@ import mediapipe as mp
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.color_engine.live_render import blend_lip_color, build_lip_alpha_mask
+from app.color_engine.live_render import (
+    DEFAULT_FINISH,
+    FINISHES,
+    LandmarkSmoother,
+    blend_lip_color,
+    build_lip_alpha_mask,
+)
 from app.uploads import HEX_RE
 
 router = APIRouter(tags=["live"])
@@ -43,10 +52,30 @@ def _encode_jpeg(rgb):
     return buf.tobytes() if ok else None
 
 
+def _process_frame(face_mesh, smoother, data: bytes, target_hex: str, finish: str):
+    """decode → لندمارک → ماسک → رنگ → encode. sync؛ با asyncio.to_thread صدا زده می‌شه."""
+    frame_rgb = _decode_jpeg(data)
+    if frame_rgb is None:
+        return None
+    h, w = frame_rgb.shape[:2]
+    result = face_mesh.process(frame_rgb)
+    if result.multi_face_landmarks:
+        pts = np.array([(p.x, p.y) for p in result.multi_face_landmarks[0].landmark])
+        pts = smoother(pts)
+        mask = build_lip_alpha_mask(pts, w, h)
+        out = blend_lip_color(frame_rgb, mask, target_hex, finish)
+    else:
+        smoother.reset()
+        out = frame_rgb  # چهره‌ای پیدا نشد؛ فریم خام برمی‌گرده
+    return _encode_jpeg(out)
+
+
 @router.websocket("/ws/live-tryon")
 async def live_tryon(ws: WebSocket):
     await ws.accept()
     target_hex = _DEFAULT_COLOR
+    finish = DEFAULT_FINISH
+    smoother = LandmarkSmoother()
     face_mesh = mp.solutions.face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
@@ -66,30 +95,21 @@ async def live_tryon(ws: WebSocket):
                     cfg = json.loads(text)
                 except ValueError:
                     continue
+                if not isinstance(cfg, dict):
+                    continue
                 color = cfg.get("target_color")
-                if color and HEX_RE.match(color):
+                if isinstance(color, str) and HEX_RE.match(color):
                     target_hex = color.upper()
+                fin = cfg.get("finish")
+                if fin in FINISHES:
+                    finish = fin
                 continue
 
             data = message.get("bytes")
             if not data:
                 continue
 
-            frame_rgb = _decode_jpeg(data)
-            if frame_rgb is None:
-                continue
-
-            h, w = frame_rgb.shape[:2]
-            result = face_mesh.process(frame_rgb)
-            if result.multi_face_landmarks:
-                landmarks = result.multi_face_landmarks[0].landmark
-                pts = [(p.x, p.y) for p in landmarks]
-                mask = build_lip_alpha_mask(pts, w, h)
-                out = blend_lip_color(frame_rgb, mask, target_hex)
-            else:
-                out = frame_rgb  # چهره‌ای پیدا نشد؛ فریم خام برمی‌گرده
-
-            encoded = _encode_jpeg(out)
+            encoded = await asyncio.to_thread(_process_frame, face_mesh, smoother, data, target_hex, finish)
             if encoded:
                 await ws.send_bytes(encoded)
     except WebSocketDisconnect:

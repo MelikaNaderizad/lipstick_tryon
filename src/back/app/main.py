@@ -1,27 +1,22 @@
 # -*- coding: utf-8 -*-
 """
 بک‌اند: آپلود سواچ، استخراج رنگ (GrabCut + Lab)، تأیید فروشنده، ارائه‌ی رنگ‌های
-تأییدشده به دموی لایو، و حالا خودِ حالت لایو (WebSocket + MediaPipe پایتون) —
+تأییدشده به دموی لایو، و حالت لایو (WebSocket + MediaPipe پایتون) —
 همه از پشت Postgres + MinIO (روترهای /seller، /demo، /ws/live-tryon).
 
 اجرا:
     cd src/back
     uvicorn app.main:app --reload
-بعد http://localhost:8000/review (آپلود/بررسی سواچ)، http://localhost:8000/live
-(پیش‌نمایش لایو با دوربین — صفحه‌ی موقت توی همین static، تا فرانت اصلی بیاد بالا)
+بعد http://localhost:8000/review (آپلود، بررسی و پیش‌نمایش لایو — همه توی یک صفحه)
 یا http://localhost:8000/docs.
 
-نکته: مسیر سبک/بدون-دیتابیس قبلی (extract.html، /extract، /apply، /extractions*،
-/anchors، store.py، lip_apply.py) حذف شد — حالا که دیتابیس آماده‌ست، /review +
-/seller مسیر اصلی‌ان. اگه این فایل‌ها هنوز توی چک‌اوت شمان، remove_legacy_files.py
-رو از ریشه‌ی ریپو اجرا کن.
+نکته: پیش‌نمایش لایو حالا بخش ۳ همون صفحه‌ی /review ـه (کلاینت WebSocket به
+/ws/live-tryon)؛ لندمارک لب و ترکیب رنگ سمت بک‌اند انجام می‌شه (app/routers/live.py).
+مسیر /live فقط برای لینک‌های قدیمی به /review ریدایرکت می‌شه و live.html دیگه لازم نیست.
 
-نکته‌ی دوم: حالت لایو قبلاً کاملاً سمت مرورگر بود (MediaPipe JS + blend رنگ در
-JS، توی src/live-demo/index.html و بخش پیش‌نمایش لایو review.html). حالا با
-تصمیم صریح، لندمارک لب و ترکیب رنگ هر دو رفتن بک‌اند (app/routers/live.py):
-کلاینت هر فریم رو با WebSocket می‌فرسته، سرور با MediaPipe پایتون رنگش می‌کنه
-و برمی‌گردونه. src/live-demo/index.html و بخش قدیمی review.html فعلاً دست‌نخورده
-موندن (تا فرانت اصلی جایگزین بشه)؛ صفحه‌ی جدید /live مسیر توصیه‌شده‌ست.
+نکته‌ی دوم: مسیر سبک/بدون-دیتابیس قبلی (extract.html، /extract، /apply،
+/extractions*، /anchors، store.py، lip_apply.py) حذف شد. اگه این فایل‌ها هنوز توی
+چک‌اوت شمان، remove_legacy_files.py رو از ریشه‌ی ریپو اجرا کن.
 """
 from pathlib import Path
 
@@ -37,7 +32,7 @@ from app.storage import backend as storage_backend
 
 app = FastAPI(title="Lipstick swatch color extraction")
 
-# برای live-demo/فرانت آینده که از یه origin دیگه صدا می‌زنه؛ توی production محدودش کن
+# برای فرانت آینده که از یه origin دیگه صدا می‌زنه؛ توی production محدودش کن
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(seller.router)
 app.include_router(demo.router)
@@ -73,4 +68,5 @@ def review():
 
 @app.get("/live", include_in_schema=False)
 def live_page():
-    return FileResponse(STATIC_DIR / "live.html")
+    # لایو الان بخش ۳ صفحه‌ی /review ـه
+    return RedirectResponse(url="/review#livePanel")
