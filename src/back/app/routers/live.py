@@ -14,6 +14,10 @@
 جدا ساخته می‌شه و موقع قطع اتصال بسته می‌شه. پردازش سنگین (MediaPipe + رنگ +
 JPEG) توی thread جدا اجرا می‌شه تا event loop قفل نشه؛ فریم‌های یه اتصال پشت
 سر هم پردازش می‌شن (هیچ‌وقت دو فراخوانی هم‌زمان روی یه FaceMesh نداریم).
+
+به‌روزرسانی (بازخورد: رژ از خط لب بیرون می‌زد): ماسک لب حالا با refine_edges=True
+ساخته می‌شه، یعنی لبه‌اش با خودِ فریم (frame_rgb) هماهنگ می‌شه تا به مرز واقعی
+لب/پوست بچسبه و بزرگ‌تر از لب واقعی نشه. جزئیات در app/color_engine/live_render.py.
 """
 import asyncio
 import json
@@ -62,7 +66,9 @@ def _process_frame(face_mesh, smoother, data: bytes, target_hex: str, finish: st
     if result.multi_face_landmarks:
         pts = np.array([(p.x, p.y) for p in result.multi_face_landmarks[0].landmark])
         pts = smoother(pts)
-        mask = build_lip_alpha_mask(pts, w, h)
+        # refine_edges=True: لبه‌ی ماسک با مرز واقعی لب/پوست توی خودِ فریم هماهنگ
+        # می‌شه (فقط می‌تونه ماسک رو تنگ‌تر کنه، نه بزرگ‌تر) تا رنگ از خط لب بیرون نزنه.
+        mask = build_lip_alpha_mask(pts, w, h, frame_rgb=frame_rgb, refine_edges=True)
         out = blend_lip_color(frame_rgb, mask, target_hex, finish)
     else:
         smoother.reset()

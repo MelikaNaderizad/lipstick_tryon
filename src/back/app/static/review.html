@@ -102,23 +102,28 @@
     <div class="hint">
       یکی از رنگ‌های همین محصول رو انتخاب کن (یا هگز دستی بنویس)، بعد دوربین رو فعال کن.
       لندمارک لب و ترکیب رنگ سمت بک‌اند انجام می‌شه (Python + MediaPipe). رنگ با حفظ حجم و بافت طبیعی لب
-      اعمال می‌شه و پوشش/براقی از روی نوع محصول تعیین می‌شه (با «فینیش» می‌تونی دستی عوضش کنی تا کالیبره کنی).
+      اعمال می‌شه و پوشش/براقی همیشه از روی نوع محصولی که موقع ساخت محصول انتخاب کردی تعیین می‌شه — نه یه
+      چیز قابل‌انتخاب برای خریدار. سلکتور «فینیش» فقط توی همین نمای فروشنده هست تا بتونی ثابت‌های رندر
+      (`FINISHES` توی `live_render.py`) رو با چشم روی چند shade کالیبره کنی؛ توی نمای کارفرما/خریدار
+      (`?client=1`) اصلاً دیده نمی‌شه و همیشه از نوع محصول میاد.
       هر فریم به سرور می‌ره و رنگ‌شده برمی‌گرده، پس چند فریم بر ثانیه‌ست نه ۳۰fps.
     </div>
     <div class="row" id="liveColorPicker" style="margin-top:8px"></div>
     <div class="row">
       <label>یا رنگ دستی</label>
       <input type="text" id="liveManualColor" placeholder="#B0223A" style="direction:ltr">
-      <label>فینیش</label>
-      <select id="liveFinishSel">
-        <option value="">خودکار (نوع محصول)</option>
-        <option value="liquid">liquid — مایع (مات)</option>
-        <option value="stick">stick — جامد</option>
-        <option value="gloss">gloss — براق</option>
-        <option value="balm">balm — بالم</option>
-        <option value="oil">oil — اویل</option>
-        <option value="plumper">plumper — پلامپر</option>
-      </select>
+      <span id="liveFinishGroup" class="row" style="margin:0">
+        <label>فینیش (فقط کالیبراسیون فروشنده)</label>
+        <select id="liveFinishSel">
+          <option value="">خودکار (نوع محصول)</option>
+          <option value="liquid">liquid — مایع (مات)</option>
+          <option value="stick">stick — جامد</option>
+          <option value="gloss">gloss — براق</option>
+          <option value="balm">balm — بالم</option>
+          <option value="oil">oil — اویل</option>
+          <option value="plumper">plumper — پلامپر</option>
+        </select>
+      </span>
       <button id="liveStartBtn" class="primary">فعال کردن دوربین</button>
       <button id="liveStopBtn" disabled>خاموش کردن دوربین</button>
     </div>
@@ -406,6 +411,9 @@ async function init() {
   if (CLIENT_VIEW) {
     $("modeNote").textContent = "نمای کارفرما — رنگ‌ها رو با عکس مقایسه کن و تأیید یا رد کن.";
     $("uploadPanel").classList.add("hidden");
+    // فینیش هیچ‌وقت نباید دست خریدار/کارفرما باشه — همیشه از نوع محصولی که فروشنده
+    // موقع ساخت محصول انتخاب کرده میاد. این سلکتور فقط ابزار کالیبراسیون داخلی فروشنده‌ست.
+    $("liveFinishGroup").classList.add("hidden");
   } else {
     $("modeNote").textContent = "بعد از آپلود، برای دادن به کارفرما همین صفحه رو با ?client=1 باز کن.";
   }
